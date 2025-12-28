@@ -7,8 +7,8 @@ const LegalAndHelp: React.FC = () => {
 
   const handleShare = async () => {
       const shareData = {
-          title: 'MediScan AI',
-          text: 'Help your family take medicines on time ❤️. Identify medicines and set voice reminders with MediScan AI.',
+          title: 'MedScan AI',
+          text: 'Help your family take medicines on time ❤️. Identify medicines and set voice reminders with MedScan AI.',
           url: window.location.href
       };
       try {
@@ -59,7 +59,7 @@ const LegalAndHelp: React.FC = () => {
                   </div>
                   <div className="border-b border-gray-100 pb-3">
                       <h4 className="font-bold text-gray-800 text-sm">Is this free?</h4>
-                      <p className="text-gray-600 text-xs mt-1">Scanning and basic alarms are free. Detailed side effects and voice features require a small one-time premium fee.</p>
+                      <p className="text-gray-600 text-xs mt-1">Scanning and basic alarms are free. Detailed side effects, prescriptions, and voice features require a small one-time premium fee.</p>
                   </div>
                   <div className="border-b border-gray-100 pb-3">
                       <h4 className="font-bold text-gray-800 text-sm">Does this replace a doctor? ❌</h4>
@@ -81,7 +81,7 @@ const LegalAndHelp: React.FC = () => {
           {activeTab === 'TERMS' && (
               <div className="text-xs text-gray-600 space-y-3 leading-relaxed">
                   <h4 className="font-bold text-gray-900">Terms of Service</h4>
-                  <p><strong>1. Disclaimer:</strong> MediScan AI provides information for educational purposes only. It is not a substitute for professional medical advice, diagnosis, or treatment.</p>
+                  <p><strong>1. Disclaimer:</strong> MedScan AI provides information for educational purposes only. It is not a substitute for professional medical advice, diagnosis, or treatment.</p>
                   <p><strong>2. Accuracy:</strong> While we strive for accuracy, medicine packaging varies. The developers are not liable for any errors or misuse of medication.</p>
                   <p><strong>3. Emergency:</strong> In case of a medical emergency, call your local emergency number immediately.</p>
               </div>
@@ -90,7 +90,7 @@ const LegalAndHelp: React.FC = () => {
 
       <div className="mt-8 text-center">
           <p className="text-[10px] text-gray-400">
-              MediScan AI v1.0.0 <br/>
+              MedScan AI v1.0.1 <br/>
               Made with ❤️ for safety.
           </p>
       </div>

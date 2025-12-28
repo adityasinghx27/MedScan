@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+
+import React, { useState, useRef } from 'react';
 import { Reminder, FoodContext, RepeatType, SoundType, VoiceTone } from '../types';
 
 interface RemindersProps {
@@ -10,189 +11,200 @@ interface RemindersProps {
 
 const Reminders: React.FC<RemindersProps> = ({ reminders, addReminder, deleteReminder, toggleReminder }) => {
   const [showForm, setShowForm] = useState(false);
-  
-  // Form State
   const [name, setName] = useState('');
   const [dose, setDose] = useState('');
   const [time, setTime] = useState('');
   const [foodContext, setFoodContext] = useState<FoodContext>('after_food');
   const [repeat, setRepeat] = useState<RepeatType>('daily');
-  const [customDays, setCustomDays] = useState<number[]>([]); 
-  const [soundType, setSoundType] = useState<SoundType>('default');
+  const [soundType, setSoundType] = useState<SoundType>('ringtone');
   const [voiceTone, setVoiceTone] = useState<VoiceTone>('normal');
+  const [customSoundData, setCustomSoundData] = useState<string | undefined>(undefined);
+  
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const DAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
-
-  const toggleDay = (idx: number) => {
-      setCustomDays(prev => prev.includes(idx) ? prev.filter(d => d !== idx) : [...prev, idx]);
-  };
-
-  const previewSound = (type: SoundType, tone?: VoiceTone) => {
+  const previewSound = (type: SoundType, tone?: VoiceTone, customData?: string) => {
+      window.speechSynthesis.cancel();
       if (type === 'voice') {
-          window.speechSynthesis.cancel();
-          let text = "It's time to take your medicine.";
-          if (tone === 'strict') text = "Please take your medicine now.";
-          if (tone === 'friendly') text = "Hey! Don't forget your medicine.";
-          if (tone === 'hindi') text = "Dawai lene ka time ho gaya hai.";
+          let text = tone === 'strict' ? "Attention! This is your AI health assistant. It is time for your medicine." : tone === 'friendly' ? "Hello! Just a friendly reminder that you need to take your medication now." : tone === 'hindi' ? "Namaste. Yeh aapki dawai lene ka sahi samay hai. Kripya ise abhi lein." : "Time for your medicine.";
           const u = new SpeechSynthesisUtterance(text);
           if (tone === 'hindi') u.lang = 'hi-IN';
           window.speechSynthesis.speak(u);
+      } else if (type === 'custom' && customData) {
+          const audio = new Audio(customData);
+          audio.play().catch(() => {});
+          setTimeout(() => audio.pause(), 3000);
       } else {
            try {
-               const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-               const ctx = new AudioContext();
+               const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
                const osc = ctx.createOscillator();
                const gain = ctx.createGain();
-               osc.connect(gain);
-               gain.connect(ctx.destination);
-               if (type === 'soft') { osc.type = 'sine'; osc.frequency.setValueAtTime(300, ctx.currentTime); } 
-               else if (type === 'loud') { osc.type = 'sawtooth'; osc.frequency.setValueAtTime(800, ctx.currentTime); } 
+               osc.connect(gain); gain.connect(ctx.destination);
+               if (type === 'soft') { osc.type = 'sine'; osc.frequency.setValueAtTime(350, ctx.currentTime); }
+               else if (type === 'loud') { osc.type = 'square'; osc.frequency.setValueAtTime(600, ctx.currentTime); }
+               else if (type === 'zen') { osc.type = 'sine'; osc.frequency.setValueAtTime(200, ctx.currentTime); osc.frequency.exponentialRampToValueAtTime(400, ctx.currentTime + 0.5); }
+               else if (type === 'emergency') { osc.type = 'sawtooth'; osc.frequency.setValueAtTime(1200, ctx.currentTime); osc.frequency.setValueAtTime(400, ctx.currentTime + 0.1); }
+               else if (type === 'musical') { osc.type = 'triangle'; osc.frequency.setValueAtTime(523.25, ctx.currentTime); osc.frequency.setValueAtTime(659.25, ctx.currentTime + 0.15); osc.frequency.setValueAtTime(783.99, ctx.currentTime + 0.3); }
+               else if (type === 'ringtone') { osc.type = 'sine'; osc.frequency.setValueAtTime(440, ctx.currentTime); osc.frequency.setValueAtTime(480, ctx.currentTime + 0.1); osc.frequency.setValueAtTime(0, ctx.currentTime + 0.2); osc.frequency.setValueAtTime(440, ctx.currentTime + 0.3); }
                else { osc.type = 'square'; osc.frequency.setValueAtTime(440, ctx.currentTime); }
-               osc.start(); osc.stop(ctx.currentTime + 0.3);
+               osc.start(); osc.stop(ctx.currentTime + 0.6);
            } catch (e) {}
       }
   };
 
-  const handleSoundSelect = (type: SoundType) => { setSoundType(type); previewSound(type, voiceTone); };
-  const handleToneSelect = (tone: VoiceTone) => { setVoiceTone(tone); previewSound('voice', tone); }
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = () => {
+        const base64 = reader.result as string;
+        setCustomSoundData(base64);
+        setSoundType('custom');
+        previewSound('custom', undefined, base64);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSoundSelect = (type: SoundType) => { 
+    if (type === 'custom') {
+        fileInputRef.current?.click();
+    } else {
+        setSoundType(type); 
+        previewSound(type, voiceTone); 
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !time || !dose) return;
-    if (repeat === 'custom' && customDays.length === 0) { alert("Select days"); return; }
-
-    addReminder({
-      id: Date.now().toString(),
-      medicineName: name,
-      dose: dose,
-      time: time,
-      foodContext: foodContext,
-      repeat: repeat,
-      customDays: repeat === 'custom' ? customDays : [],
-      soundType: soundType,
-      voiceTone: soundType === 'voice' ? voiceTone : undefined,
-      active: true,
-      snoozedUntil: null,
-      createdAt: Date.now()
+    addReminder({ 
+        id: Date.now().toString(), 
+        medicineName: name, 
+        dose, 
+        time, 
+        foodContext, 
+        repeat, 
+        customDays: [], 
+        soundType, 
+        customSoundData,
+        voiceTone: soundType === 'voice' ? voiceTone : undefined, 
+        active: true, 
+        snoozedUntil: null, 
+        createdAt: Date.now() 
     });
-
-    setName(''); setDose(''); setTime(''); setFoodContext('after_food'); setRepeat('daily'); setCustomDays([]); setSoundType('default'); setVoiceTone('normal'); setShowForm(false);
+    setShowForm(false); setName(''); setDose(''); setTime(''); setCustomSoundData(undefined);
   };
 
   return (
-    <div className="p-6 pb-32 animate-fade-in-up">
-      <div className="flex justify-between items-center mb-8">
+    <div className="p-8 pb-40 animate-fade-in max-w-lg mx-auto bg-slate-50 min-h-screen">
+      <div className="flex justify-between items-end mb-12">
         <div>
-            <h2 className="text-2xl font-bold text-gray-900">Alarms</h2>
-            <p className="text-gray-400 text-xs font-medium">{reminders.length} Active Reminders</p>
+            <h2 className="text-4xl font-extrabold text-slate-900 tracking-tighter">My Alarms</h2>
+            <p className="text-teal-600 text-[10px] font-black uppercase tracking-[0.4em] mt-2 opacity-60">Precision Schedule</p>
         </div>
-        <button 
-            onClick={() => setShowForm(!showForm)}
-            className="bg-black text-white px-6 py-3 rounded-2xl shadow-lg shadow-gray-400/20 hover:scale-105 transition-transform font-bold text-sm flex items-center"
-        >
-            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-            Add New
+        <button onClick={() => setShowForm(!showForm)} className="bg-slate-900 text-white w-14 h-14 rounded-3xl shadow-2xl flex items-center justify-center hover:scale-110 active:scale-90 transition-all border border-slate-700">
+            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 4v16m8-8H4" /></svg>
         </button>
       </div>
 
       {showForm && (
-        <form onSubmit={handleSubmit} className="bg-white p-6 rounded-[2rem] shadow-2xl border border-gray-100 mb-8 space-y-5 animate-fade-in-down">
-            <div className="grid grid-cols-2 gap-4">
-                <div>
-                    <label className="block text-xs font-bold text-gray-400 uppercase mb-2">Medicine</label>
-                    <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Paracetamol" required className="w-full p-3 bg-gray-50 rounded-xl border-none focus:ring-2 focus:ring-teal-500 font-semibold" />
+        <form onSubmit={handleSubmit} className="bg-white p-8 rounded-[3.5rem] shadow-2xl border border-slate-100 mb-12 space-y-10 animate-slide-up relative z-[110]">
+            <h3 className="text-xl font-black text-slate-900 flex items-center tracking-tight">
+                <span className="w-3 h-3 bg-teal-500 rounded-full mr-4 shadow-teal-200 shadow-lg"></span> 
+                New Schedule
+            </h3>
+            
+            <input type="file" ref={fileInputRef} onChange={handleFileChange} accept="audio/*" className="hidden" />
+
+            <div className="grid grid-cols-2 gap-6">
+                <div className="space-y-3">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Medicine</label>
+                    <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Advil" required className="w-full p-5 bg-slate-50 rounded-2xl border-none font-bold text-slate-800 placeholder-slate-300 focus:ring-4 focus:ring-teal-500/10 transition-all" />
                 </div>
-                <div>
-                    <label className="block text-xs font-bold text-gray-400 uppercase mb-2">Dose</label>
-                    <input type="text" value={dose} onChange={(e) => setDose(e.target.value)} placeholder="1 Tablet" required className="w-full p-3 bg-gray-50 rounded-xl border-none focus:ring-2 focus:ring-teal-500 font-semibold" />
+                <div className="space-y-3">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Quantity</label>
+                    <input type="text" value={dose} onChange={(e) => setDose(e.target.value)} placeholder="1 pill" required className="w-full p-5 bg-slate-50 rounded-2xl border-none font-bold text-slate-800 placeholder-slate-300 focus:ring-4 focus:ring-teal-500/10 transition-all" />
                 </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-                <div>
-                    <label className="block text-xs font-bold text-gray-400 uppercase mb-2">Time</label>
-                    <input type="time" value={time} onChange={(e) => setTime(e.target.value)} required className="w-full p-3 bg-gray-50 rounded-xl border-none focus:ring-2 focus:ring-teal-500 font-mono font-bold text-lg" />
+            <div className="grid grid-cols-2 gap-6">
+                <div className="space-y-3">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Exact Time</label>
+                    <input type="time" value={time} onChange={(e) => setTime(e.target.value)} required className="w-full p-5 bg-slate-50 rounded-2xl border-none font-black text-2xl text-teal-700 shadow-inner" />
                 </div>
-                <div>
-                    <label className="block text-xs font-bold text-gray-400 uppercase mb-2">Condition</label>
-                    <select value={foodContext} onChange={(e) => setFoodContext(e.target.value as FoodContext)} className="w-full p-3 bg-gray-50 rounded-xl border-none focus:ring-2 focus:ring-teal-500 font-semibold text-sm">
-                        <option value="before_food">Before Food 🍎</option>
+                <div className="space-y-3">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Intake Rule</label>
+                    <select value={foodContext} onChange={(e) => setFoodContext(e.target.value as FoodContext)} className="w-full p-5 bg-slate-50 rounded-2xl border-none font-bold text-xs text-slate-700 focus:ring-4 focus:ring-teal-500/10 transition-all">
                         <option value="after_food">After Food 🥣</option>
+                        <option value="before_food">Before Food 🍎</option>
                         <option value="empty_stomach">Empty Stomach 🚫</option>
                         <option value="any">Anytime 🤷</option>
                     </select>
                 </div>
             </div>
 
-            <div>
-                 <label className="block text-xs font-bold text-gray-400 uppercase mb-2">Frequency</label>
-                 <div className="flex bg-gray-100 p-1 rounded-xl mb-3">
-                     {['daily', 'alternate', 'custom'].map((r) => (
-                         <button key={r} type="button" onClick={() => setRepeat(r as RepeatType)} className={`flex-1 py-2 text-xs font-bold rounded-lg capitalize transition-all ${repeat === r ? 'bg-white text-teal-600 shadow-sm' : 'text-gray-500'}`}>{r}</button>
-                     ))}
-                 </div>
-                 {repeat === 'custom' && (
-                     <div className="flex justify-between px-2">
-                         {DAYS.map((d, i) => (
-                             <button key={i} type="button" onClick={() => toggleDay(i)} className={`w-8 h-8 rounded-full text-xs font-bold flex items-center justify-center transition-all ${customDays.includes(i) ? 'bg-teal-500 text-white shadow-md' : 'bg-gray-100 text-gray-400'}`}>{d}</button>
-                         ))}
-                     </div>
-                 )}
-            </div>
-
-            <div>
-                <label className="block text-xs font-bold text-gray-400 uppercase mb-2">Alert Sound</label>
-                <div className="grid grid-cols-4 gap-2 mb-3">
-                     {(['default', 'soft', 'loud', 'voice'] as SoundType[]).map(s => (
-                         <button key={s} type="button" onClick={() => handleSoundSelect(s)} className={`py-2 text-xs font-bold rounded-xl border transition-all capitalize ${soundType === s ? 'bg-teal-50 border-teal-500 text-teal-700' : 'border-gray-200 text-gray-500'}`}>{s}</button>
+            <div className="space-y-4">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Alert Sound</label>
+                <div className="grid grid-cols-3 gap-2.5">
+                     {[ 'ringtone', 'musical', 'zen', 'emergency', 'soft', 'loud', 'voice', 'custom' ].map(s => (
+                         <button key={s} type="button" onClick={() => handleSoundSelect(s as SoundType)} className={`py-3.5 text-[9px] font-black rounded-2xl border transition-all uppercase tracking-tighter active:scale-90 ${soundType === s ? 'bg-slate-900 border-slate-900 text-white shadow-xl shadow-slate-900/30' : 'border-slate-100 text-slate-400 bg-slate-50 hover:bg-white'}`}>
+                            {s === 'custom' && customSoundData ? '🎵 Uploaded' : s}
+                         </button>
                      ))}
                 </div>
                 {soundType === 'voice' && (
-                    <div className="bg-teal-50/50 p-3 rounded-xl border border-teal-100">
-                        <div className="flex space-x-2">
-                             {(['normal', 'strict', 'friendly', 'hindi'] as VoiceTone[]).map(t => (
-                                 <button key={t} type="button" onClick={() => handleToneSelect(t)} className={`flex-1 py-1.5 text-[10px] font-bold rounded-lg capitalize transition-all ${voiceTone === t ? 'bg-teal-600 text-white shadow-md' : 'bg-white text-gray-500 border border-gray-200'}`}>{t}</button>
-                             ))}
-                        </div>
+                    <div className="bg-teal-50 p-5 rounded-3xl flex space-x-2 border border-teal-100 animate-fade-in">
+                         {(['normal', 'strict', 'friendly', 'hindi'] as VoiceTone[]).map(t => (
+                             <button key={t} type="button" onClick={() => { setVoiceTone(t); previewSound('voice', t); }} className={`flex-1 py-3 text-[10px] font-black rounded-xl capitalize border transition-all ${voiceTone === t ? 'bg-white text-teal-700 border-teal-200 shadow-md' : 'text-slate-400 border-transparent hover:text-slate-600'}`}>{t}</button>
+                         ))}
                     </div>
                 )}
             </div>
 
-            <button type="submit" className="w-full bg-teal-600 text-white py-4 rounded-xl font-bold shadow-xl shadow-teal-600/30 hover:scale-[1.02] transition-all">Set Alarm</button>
+            <div className="pt-6 flex space-x-4">
+                <button type="button" onClick={() => setShowForm(false)} className="flex-1 bg-slate-100 text-slate-500 py-6 rounded-[2.5rem] font-black text-[11px] uppercase tracking-widest hover:bg-slate-200 transition-colors">Dismiss</button>
+                <button type="submit" className="flex-[2] bg-teal-600 text-white py-6 rounded-[2.5rem] font-black text-sm uppercase tracking-widest shadow-2xl shadow-teal-600/30 hover:translate-y-[-2px] active:scale-95 transition-all">Enable Alarm</button>
+            </div>
         </form>
       )}
 
-      <div className="space-y-4">
+      <div className="space-y-8">
             {reminders.map(rem => (
-                <div key={rem.id} className={`p-5 rounded-[1.5rem] border transition-all duration-300 relative overflow-hidden group ${rem.active ? 'bg-white border-teal-100 shadow-lg shadow-teal-900/5' : 'bg-gray-50 border-transparent opacity-75'}`}>
+                <div key={rem.id} className={`p-8 rounded-[3.5rem] border transition-all duration-500 relative overflow-hidden group ${rem.active ? 'bg-white border-white shadow-2xl shadow-slate-200/50' : 'bg-slate-100 border-transparent opacity-40 grayscale blur-[0.5px]'}`}>
                     <div className="flex justify-between items-center relative z-10">
-                        <div className="flex items-center space-x-4">
-                            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-mono font-bold text-lg shadow-inner ${rem.active ? 'bg-teal-50 text-teal-600' : 'bg-gray-200 text-gray-500'}`}>
-                                {rem.time}
+                        <div className="flex items-center space-x-8">
+                            <div className={`w-20 h-20 rounded-[2rem] flex flex-col items-center justify-center shadow-2xl transition-all duration-500 ${rem.active ? 'bg-slate-900 text-white scale-100' : 'bg-slate-200 text-slate-500'}`}>
+                                <span className="text-2xl font-black tracking-tighter leading-none">{rem.time}</span>
+                                <span className="text-[9px] uppercase font-black tracking-widest mt-1 opacity-60">{rem.repeat}</span>
                             </div>
                             <div>
-                                <h3 className={`font-bold text-lg leading-tight ${rem.active ? 'text-gray-900' : 'text-gray-500'}`}>{rem.medicineName}</h3>
-                                <p className="text-xs text-gray-400 font-medium">{rem.dose} • {rem.foodContext.replace('_', ' ')}</p>
+                                <h3 className={`font-black text-2xl tracking-tighter leading-none mb-2 ${rem.active ? 'text-slate-900' : 'text-slate-500'}`}>{rem.medicineName}</h3>
+                                <div className="flex items-center space-x-3">
+                                    <span className="text-[10px] font-black text-white bg-teal-600 px-3 py-1.5 rounded-xl uppercase tracking-widest shadow-md">{rem.dose}</span>
+                                    <span className="text-[10px] text-slate-400 font-black uppercase tracking-widest opacity-70 italic">{rem.foodContext.replace('_', ' ')}</span>
+                                </div>
+                                <div className="mt-2 text-[8px] font-bold text-slate-300 uppercase tracking-widest flex items-center">
+                                    <span className="mr-1">🔊</span> {rem.soundType === 'custom' ? 'Custom Ringtone' : rem.soundType === 'voice' ? `AI Voice (${rem.voiceTone})` : rem.soundType}
+                                </div>
                             </div>
                         </div>
-
-                        <div className="flex items-center space-x-3">
-                             <button onClick={() => toggleReminder(rem.id)} className={`w-12 h-7 rounded-full p-1 transition-all duration-300 ${rem.active ? 'bg-teal-500' : 'bg-gray-300'}`}>
-                                <div className={`bg-white w-5 h-5 rounded-full shadow-md transform transition-transform duration-300 ${rem.active ? 'translate-x-5' : ''}`}></div>
+                        <div className="flex flex-col space-y-4">
+                            <button onClick={() => toggleReminder(rem.id)} className={`w-14 h-7 rounded-full p-1.5 transition-all duration-500 shadow-inner ${rem.active ? 'bg-teal-500' : 'bg-slate-300'}`}>
+                                <div className={`bg-white w-4 h-4 rounded-full shadow-2xl transform transition-transform duration-500 ${rem.active ? 'translate-x-7' : ''}`}></div>
                             </button>
-                            <button onClick={() => deleteReminder(rem.id)} className="text-gray-300 hover:text-red-400 transition-colors">
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                            <button onClick={() => deleteReminder(rem.id)} className="w-14 h-10 rounded-2xl bg-rose-50 text-rose-300 flex items-center justify-center hover:bg-rose-500 hover:text-white transition-all active:scale-90 border border-rose-100/50">
+                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                             </button>
                         </div>
                     </div>
                 </div>
             ))}
-            {reminders.length === 0 && (
-                <div className="text-center py-20">
-                    <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4 text-gray-300">
-                        <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+            {reminders.length === 0 && !showForm && (
+                <div className="text-center py-32 animate-fade-in opacity-40">
+                    <div className="w-32 h-32 bg-white rounded-[3.5rem] flex items-center justify-center mx-auto mb-8 text-slate-100 shadow-xl border border-slate-50">
+                        <svg className="w-14 h-14 text-slate-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                     </div>
-                    <p className="text-gray-400 font-medium">No active alarms.</p>
+                    <h3 className="text-slate-900 font-black text-2xl tracking-tighter">No Active Alarms</h3>
+                    <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-2">Time for your first med?</p>
                 </div>
             )}
       </div>

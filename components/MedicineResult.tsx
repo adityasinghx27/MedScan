@@ -1,279 +1,325 @@
+
 import React, { useState, useEffect } from 'react';
 import { MedicineData, PatientProfile } from '../types';
+import { checkConditionSafety } from '../services/geminiService';
 
 interface MedicineResultProps {
   data: MedicineData;
   profile?: PatientProfile;
   isPremium: boolean;
+  isPreviouslyScanned: boolean;
+  overdoseWarning?: boolean;
   onOpenPremium: () => void;
   onClose: () => void;
 }
 
-const MedicineResult: React.FC<MedicineResultProps> = ({ data, profile, isPremium, onOpenPremium, onClose }) => {
+const MedicineResult: React.FC<MedicineResultProps> = ({ 
+    data, 
+    profile, 
+    isPremium, 
+    isPreviouslyScanned, 
+    overdoseWarning,
+    onOpenPremium, 
+    onClose 
+}) => {
   const [speaking, setSpeaking] = useState(false);
-  const [feedbackGiven, setFeedbackGiven] = useState<'yes' | 'no' | null>(null);
-  const [feedbackText, setFeedbackText] = useState('');
-  const [feedbackSent, setFeedbackSent] = useState(false);
+  const [showCriticalModal, setShowCriticalModal] = useState(false);
+  const [useEli5, setUseEli5] = useState(false);
+  const [expandedDesc, setExpandedDesc] = useState(false);
+  const [activeChip, setActiveChip] = useState<number | null>(null); 
+  const [activeTimelineTooltip, setActiveTimelineTooltip] = useState<string | null>(null);
+  
+  // Decision Support
+  const [selectedCondition, setSelectedCondition] = useState('');
+  const [conditionSafety, setConditionSafety] = useState('');
+  const [checkingCondition, setCheckingCondition] = useState(false);
+
+  // Safety Defaults
+  const questions = data?.commonQuestions || [];
+  const timeline = data?.effectTimeline || { onset: 'N/A', peak: 'N/A', duration: 'N/A' };
+  const lifestyle = data?.lifestyleWarnings || { alcohol: false, driving: false, sleep: false };
+  const avoidList = data?.whoShouldAvoid || [];
+  const alternatives = data?.alternatives || [];
+  const interaction = data?.interactionAnalysis;
+  const medsList = data?.medicationsFound || [];
 
   useEffect(() => {
-    return () => {
-        window.speechSynthesis.cancel();
+    if (data?.riskScore === 'High' || data?.criticalWarning || overdoseWarning || interaction?.severity === 'Dangerous') {
+        setShowCriticalModal(true);
     }
-  }, []);
+    return () => { window.speechSynthesis.cancel(); }
+  }, [data, overdoseWarning, interaction]);
+
+  const speakText = (text: string) => {
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = profile?.language === 'hindi' ? 'hi-IN' : 'en-US';
+    utterance.onend = () => setSpeaking(false);
+    window.speechSynthesis.speak(utterance);
+    setSpeaking(true);
+  };
 
   const toggleSpeech = () => {
     if (speaking) {
         window.speechSynthesis.cancel();
         setSpeaking(false);
     } else {
-        const textToRead = `
-            ${data.name}. 
-            ${data.simpleExplanation}. 
-            ${data.ageAdvice}. 
-            ${data.pregnancyWarning ? 'Warning: ' + data.pregnancyWarning : ''}
-        `;
-        const utterance = new SpeechSynthesisUtterance(textToRead);
-        utterance.lang = profile?.language === 'hindi' ? 'hi-IN' : 'en-US';
-        utterance.onend = () => setSpeaking(false);
-        window.speechSynthesis.speak(utterance);
-        setSpeaking(true);
+        const textToRead = `${data?.name}. ${useEli5 ? data?.childFriendlyExplanation : data?.simpleExplanation}. ${data?.keyWarning || ''} ${interaction ? 'Interaction Check: ' + interaction.summary : ''}`;
+        speakText(textToRead);
     }
+  };
+
+  const readWarningAloud = () => {
+    const textToRead = overdoseWarning 
+        ? "Attention! Potential Overdose detected. A recent scan of this medicine was found. Double-dosing can be very dangerous."
+        : `Warning. ${data?.criticalWarning || 'High Risk Alert'}. ${interaction ? interaction.summary : ''} ${data?.riskReason || ''}`;
+    speakText(textToRead);
   };
 
   const handleShare = async () => {
       const shareData = {
-          title: `MediScan Info: ${data.name}`,
-          text: `Check out this medicine: ${data.name}. Usage: ${data.simpleExplanation}. identified via MediScan AI App.`,
+          title: `MedScan: ${data?.name}`,
+          text: `Medicine: ${data?.name}. Risk Level: ${data?.riskScore}.`,
           url: window.location.href
       };
       try {
           if (navigator.share) await navigator.share(shareData);
-          else {
-              alert("Copied to clipboard!");
-              await navigator.clipboard.writeText(shareData.text);
-          }
       } catch (err) {}
   };
 
-  const submitFeedback = () => {
-      setFeedbackSent(true);
-      setTimeout(() => setFeedbackSent(false), 3000); 
+  const handleCheckCondition = async () => {
+      if (!selectedCondition || !data?.name) return;
+      setCheckingCondition(true);
+      const result = await checkConditionSafety(data.name, selectedCondition);
+      setConditionSafety(result);
+      setCheckingCondition(false);
   };
 
+  const handleDownloadReport = () => {
+      if (!isPremium) {
+          onOpenPremium();
+          return;
+      }
+      window.print();
+  };
+
+  const getHeaderColor = () => {
+      if (overdoseWarning || data?.riskScore === 'High' || interaction?.severity === 'Dangerous') return 'bg-rose-600';
+      if (data?.riskScore === 'Medium' || interaction?.severity === 'Warning') return 'bg-amber-500';
+      return 'bg-teal-600';
+  };
+
+  const timelineDefs: Record<string, string> = {
+    onset: "When the medicine starts working in your body.",
+    peak: "When the medicine reaches its maximum strength.",
+    duration: "How long the relief typically lasts."
+  };
+
+  if (!data) return null;
+
   return (
-    <div className="pb-32 bg-gray-50 min-h-screen">
+    <div className="bg-slate-50 min-h-screen pb-32 animate-fade-in relative z-50">
         
+        {/* CRITICAL WARNING MODAL */}
+        {showCriticalModal && (
+            <div className="fixed inset-0 z-[60] bg-slate-900/95 flex items-center justify-center p-6 backdrop-blur-md animate-fade-in">
+                <div className="bg-white rounded-[2.5rem] p-8 shadow-2xl w-full max-sm text-center border-t-4 border-rose-500 relative">
+                     <button 
+                        onClick={readWarningAloud}
+                        className="absolute top-6 right-6 w-10 h-10 bg-rose-50 rounded-full flex items-center justify-center text-rose-500 hover:bg-rose-100 transition-colors active:scale-90"
+                        title="Read Warning Aloud"
+                     >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" /></svg>
+                     </button>
+
+                     <div className="w-20 h-20 bg-rose-100 rounded-full flex items-center justify-center mx-auto mb-6 animate-pulse">
+                         <span className="text-4xl">⚠️</span>
+                     </div>
+                     <h2 className="text-2xl font-extrabold text-rose-600 mb-2 leading-tight">
+                        {overdoseWarning ? 'Overdose Risk' : interaction?.severity === 'Dangerous' ? 'Dangerous Combo' : 'High Risk Alert'}
+                     </h2>
+                     <p className="text-slate-600 font-medium mb-6 leading-relaxed px-2">
+                         {interaction?.severity === 'Dangerous' 
+                            ? interaction.summary 
+                            : overdoseWarning 
+                                ? "Recent scan detected. Double-dosing can be dangerous."
+                                : (data?.criticalWarning || "This medicine carries risks for your current profile.")}
+                     </p>
+                     
+                     {(data?.riskReason || interaction?.advice) && (
+                         <div className="bg-rose-50 p-5 rounded-2xl mb-8 text-sm text-rose-800 border border-rose-100 font-bold text-left flex items-start">
+                             <span className="mr-3 mt-0.5">🚨</span>
+                             <span>{interaction?.advice || data.riskReason}</span>
+                         </div>
+                     )}
+
+                     <div className="space-y-3">
+                        <button onClick={() => { setShowCriticalModal(false); window.speechSynthesis.cancel(); }} className="w-full bg-rose-600 text-white py-4 rounded-2xl font-black shadow-lg shadow-rose-200 transition-all active:scale-95 uppercase tracking-widest text-xs">
+                            I Understand
+                        </button>
+                     </div>
+                </div>
+            </div>
+        )}
+
         {/* Hero Header */}
-        <div className="bg-teal-700 text-white rounded-b-[2.5rem] shadow-2xl relative overflow-hidden pb-12">
-            <div className="absolute top-0 right-0 -mr-10 -mt-10 w-64 h-64 bg-white opacity-5 rounded-full blur-3xl"></div>
-            <div className="absolute bottom-0 left-0 -ml-10 -mb-10 w-48 h-48 bg-teal-400 opacity-10 rounded-full blur-2xl"></div>
+        <header className={`${getHeaderColor()} text-white rounded-b-[3rem] shadow-2xl shadow-slate-300 relative overflow-hidden pb-12`}>
+            <div className="absolute top-0 right-0 -mr-20 -mt-20 w-80 h-80 bg-white opacity-10 rounded-full blur-3xl"></div>
             
             <div className="p-6 pt-8 relative z-10">
                 <div className="flex justify-between items-start mb-6">
-                    <div className="bg-teal-800/50 backdrop-blur-md px-3 py-1 rounded-full border border-teal-600/30">
-                        <span className="text-[10px] font-bold tracking-widest uppercase text-teal-100">AI Analysis</span>
+                    <div className="flex flex-wrap gap-2">
+                         <div className="bg-black/20 backdrop-blur-md px-3 py-1.5 rounded-lg border border-white/10">
+                            <span className="text-[10px] font-bold tracking-widest uppercase">Risk: {data?.riskScore || 'Unknown'}</span>
+                        </div>
+                        {medsList.length > 1 && (
+                             <div className="bg-white/20 backdrop-blur-md px-3 py-1.5 rounded-lg border border-white/10">
+                                <span className="text-[10px] font-bold">Combo Check: {medsList.length} Items</span>
+                            </div>
+                        )}
                     </div>
-                    <button onClick={onClose} className="bg-white/10 p-2 rounded-full hover:bg-white/20 transition-colors">
-                        <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                    <button onClick={onClose} className="bg-white/10 p-2.5 rounded-full hover:bg-white/20 active:scale-95 print:hidden border border-white/10">
+                        <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg>
                     </button>
                 </div>
                 
-                <h2 className="text-3xl font-extrabold mb-2 leading-tight">{data.name}</h2>
-                <p className="text-teal-100 text-sm opacity-90 font-medium">{data.description}</p>
+                <h2 className="text-3xl font-extrabold mb-2 tracking-tight">{medsList.length > 1 ? "Medication Pack" : (data?.name || 'Unknown')}</h2>
+                <div className="flex flex-wrap gap-2 mb-4">
+                    {medsList.map((m, i) => (
+                        <span key={i} className="text-[9px] font-black uppercase bg-white/10 px-2 py-1 rounded-md border border-white/5">{m}</span>
+                    ))}
+                </div>
+                
+                <div 
+                    className={`text-white/90 text-sm font-medium leading-relaxed transition-all ${expandedDesc ? '' : 'line-clamp-2'}`} 
+                    onClick={() => setExpandedDesc(!expandedDesc)}
+                >
+                    {data?.description || 'No description available.'}
+                </div>
+                
+                {data?.keyWarning && (
+                    <div className="mt-6 bg-black/20 backdrop-blur-md p-4 rounded-2xl border-l-4 border-yellow-400">
+                        <p className="text-sm font-bold text-white">⚠️ {data.keyWarning}</p>
+                    </div>
+                )}
             </div>
 
-            {/* Floating Play Button */}
             <button 
                 onClick={toggleSpeech}
-                className="absolute -bottom-7 right-8 w-16 h-16 bg-yellow-400 rounded-full shadow-lg shadow-yellow-500/30 flex items-center justify-center text-black hover:scale-110 active:scale-95 transition-transform z-20"
+                className="absolute -bottom-7 right-8 w-16 h-16 bg-yellow-400 rounded-full shadow-lg flex items-center justify-center text-slate-900 active:scale-95 transition-transform z-20 print:hidden border-4 border-white"
             >
                 {speaking ? (
                     <div className="flex space-x-1 items-center h-5">
-                        <div className="w-1.5 h-6 bg-black animate-[bounce_1s_infinite_0ms]"></div>
-                        <div className="w-1.5 h-6 bg-black animate-[bounce_1s_infinite_200ms]"></div>
-                        <div className="w-1.5 h-6 bg-black animate-[bounce_1s_infinite_400ms]"></div>
+                        <div className="w-1.5 h-6 bg-slate-900 animate-pulse"></div>
+                        <div className="w-1.5 h-6 bg-slate-900 animate-pulse delay-75"></div>
                     </div>
                 ) : (
-                    <svg className="w-8 h-8 ml-1" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                    <svg className="w-7 h-7 ml-1" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
                 )}
             </button>
-        </div>
+        </header>
 
-        <div className="px-6 pt-10 space-y-6">
-            
-            {/* CRITICAL ALERTS */}
-            {(data.pregnancyWarning || data.breastfeedingWarning) && (
-                <div className="bg-red-50 border border-red-100 p-5 rounded-2xl animate-pulse-ring">
-                    <div className="flex items-start">
-                        <div className="flex-shrink-0 bg-red-100 p-2 rounded-full">
-                            <svg className="h-6 w-6 text-red-500" viewBox="0 0 20 20" fill="currentColor">
-                                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                            </svg>
-                        </div>
-                        <div className="ml-4">
-                            <h3 className="text-sm font-bold text-red-900 uppercase tracking-wide">Critical Safety Alert</h3>
-                            {data.pregnancyWarning && <p className="text-sm text-red-700 mt-2 font-medium">🤰 {data.pregnancyWarning}</p>}
-                            {data.breastfeedingWarning && <p className="text-sm text-red-700 mt-1 font-medium">🤱 {data.breastfeedingWarning}</p>}
+        <div className="px-5 pt-12 space-y-6">
+
+            {/* COMBINATION SAFETY SECTION */}
+            {interaction && (
+                <section className={`p-6 rounded-[2rem] border-2 shadow-sm ${
+                    interaction.severity === 'Safe' ? 'bg-emerald-50 border-emerald-100' :
+                    interaction.severity === 'Warning' ? 'bg-amber-50 border-amber-100' :
+                    'bg-rose-50 border-rose-100'
+                }`}>
+                    <div className="flex justify-between items-center mb-4">
+                        <h3 className={`text-[10px] font-black uppercase tracking-widest ${
+                            interaction.severity === 'Safe' ? 'text-emerald-700' :
+                            interaction.severity === 'Warning' ? 'text-amber-700' :
+                            'text-rose-700'
+                        }`}>Combination Safety</h3>
+                        <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${
+                             interaction.severity === 'Safe' ? 'bg-emerald-500 text-white' :
+                             interaction.severity === 'Warning' ? 'bg-amber-500 text-white' :
+                             'bg-rose-500 text-white'
+                        }`}>
+                            {interaction.severity}
                         </div>
                     </div>
-                </div>
+                    <p className="text-slate-900 font-bold mb-3">{interaction.summary}</p>
+                    <div className="text-xs text-slate-600 bg-white/50 p-4 rounded-2xl italic leading-relaxed">
+                        <span className="font-black uppercase text-[8px] block mb-1">Doctor Advice:</span>
+                        {interaction.advice}
+                    </div>
+                </section>
             )}
-
-            {/* Simple Explanation */}
-            <section className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 relative overflow-hidden">
-                <div className="absolute top-0 left-0 w-1 h-full bg-teal-500"></div>
-                <h3 className="text-xs font-bold text-gray-400 uppercase mb-3 flex items-center tracking-wider">
-                    Simply Put
-                </h3>
-                <p className="text-gray-800 text-lg font-medium leading-relaxed">
-                    "{data.simpleExplanation}"
+            
+            <section className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100">
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">AI Analysis</h3>
+                    <button 
+                        onClick={() => setUseEli5(!useEli5)}
+                        className={`text-[10px] font-bold px-3 py-1.5 rounded-full transition-all border ${useEli5 ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-slate-50 text-slate-500 border-slate-200'}`}
+                    >
+                        {useEli5 ? 'Simple Mode' : 'Explain Simply'}
+                    </button>
+                </div>
+                <p className="text-slate-800 text-lg font-medium leading-relaxed">
+                    "{useEli5 ? data?.childFriendlyExplanation : data?.simpleExplanation}"
                 </p>
-                <div className="mt-4 flex justify-end">
-                    <span className="text-[10px] text-teal-700 font-bold bg-teal-50 border border-teal-100 px-3 py-1 rounded-full">Medical AI Analysis</span>
-                </div>
             </section>
 
-             {/* Age Specific Advice */}
-            <section className="bg-indigo-50/50 p-5 rounded-2xl border border-indigo-100">
-                 <div className="flex items-center mb-3">
-                    <div className="w-8 h-8 bg-indigo-100 text-indigo-600 rounded-lg flex items-center justify-center mr-3">
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
-                    </div>
-                    <h3 className="text-base font-bold text-gray-800">For {profile?.ageGroup}s</h3>
-                </div>
-                <div className="text-indigo-900 text-sm leading-relaxed pl-11">
-                    {data.ageAdvice}
-                </div>
-            </section>
-
-            {/* Grid for Uses and Dosage */}
-            <div className="grid grid-cols-1 gap-4">
-                {/* Uses */}
-                <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
-                    <h3 className="text-sm font-bold text-gray-400 uppercase mb-3 flex items-center">
-                        <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                        Common Uses
-                    </h3>
-                    <div className="flex flex-wrap gap-2">
-                        {data.uses.map((use, i) => (
-                            <span key={i} className="px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg text-sm font-semibold border border-blue-100">
-                                {use}
-                            </span>
+             <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 relative">
+                <h3 className="text-xs font-bold text-slate-400 uppercase mb-8 tracking-widest flex items-center">
+                    Effect Timeline
+                </h3>
+                <div className="relative px-4 pb-4">
+                    <div className="absolute top-[18px] left-6 right-6 h-1.5 bg-slate-100 -z-10 rounded-full"></div>
+                    <div className="flex justify-between items-start">
+                        {[
+                            { id: 'onset', label: "Starts", val: timeline.onset, color: "bg-blue-500" },
+                            { id: 'peak', label: "Peak", val: timeline.peak, color: "bg-purple-500" },
+                            { id: 'duration', label: "Lasts", val: timeline.duration, color: "bg-emerald-500" }
+                        ].map((item, i) => (
+                            <button key={i} className="flex flex-col items-center">
+                                <div className={`w-9 h-9 ${item.color} rounded-2xl border-4 border-white shadow-lg flex items-center justify-center mb-3`}>
+                                     {item.id === 'onset' && <span className="text-white text-[10px]">⏱️</span>}
+                                     {item.id === 'peak' && <span className="text-white text-[10px]">📈</span>}
+                                     {item.id === 'duration' && <span className="text-white text-[10px]">⌛</span>}
+                                </div>
+                                <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-1">{item.label}</p>
+                                <p className="text-xs font-black text-slate-900">{item.val}</p>
+                            </button>
                         ))}
                     </div>
                 </div>
+             </div>
 
-                {/* Dosage */}
-                <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
-                    <h3 className="text-sm font-bold text-gray-400 uppercase mb-3 flex items-center">
-                         <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                        Dosage Guide
-                    </h3>
-                    <div className="text-gray-700 text-sm leading-relaxed font-medium">
-                        {data.dosage}
-                    </div>
-                </div>
-            </div>
+             <div className="grid grid-cols-2 gap-4">
+                 <section className="bg-orange-50/50 p-5 rounded-[2rem] border border-orange-100">
+                     <span className="text-[10px] font-bold text-orange-400 uppercase mb-2 tracking-widest">Intake</span>
+                     <div className="flex items-center mt-1">
+                         <span className="text-2xl mr-2">🥣</span>
+                         <span className="font-bold text-slate-900 text-sm leading-tight">{data?.foodGuidance || 'Anytime'}</span>
+                     </div>
+                 </section>
 
-            {/* Side Effects - PREMIUM LOCKED */}
-            <section className="relative overflow-hidden rounded-2xl border border-red-100 shadow-sm bg-white">
-                <div className={`p-5 ${!isPremium ? 'filter blur-sm select-none' : 'bg-red-50/30'}`}>
-                    <h3 className="text-sm font-bold text-red-400 uppercase mb-3 flex items-center">
-                        Side Effects
-                    </h3>
-                    <ul className="space-y-3">
-                        {isPremium ? (
-                            data.sideEffects.map((effect, i) => (
-                                <li key={i} className="flex items-start text-sm text-gray-700">
-                                    <span className="text-red-400 mr-2">•</span> {effect}
-                                </li>
-                            ))
-                        ) : (
-                            <>
-                                <li className="flex items-start text-sm text-gray-700"><span className="text-red-400 mr-2">•</span> Nausea and dizziness in some cases.</li>
-                                <li className="flex items-start text-sm text-gray-700"><span className="text-red-400 mr-2">•</span> May cause drowsiness.</li>
-                                <li className="flex items-start text-sm text-gray-700"><span className="text-red-400 mr-2">•</span> Stomach upset if taken on empty stomach.</li>
-                            </>
-                        )}
-                    </ul>
-                </div>
+                 <div className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm">
+                     <span className="text-[10px] font-bold text-slate-400 uppercase mb-3 tracking-widest">Restrictions</span>
+                     <div className="flex justify-between w-full">
+                         <div className={`text-xl ${!lifestyle.alcohol && 'opacity-20 grayscale'}`} title="No Alcohol">🍷</div>
+                         <div className={`text-xl ${!lifestyle.driving && 'opacity-20 grayscale'}`} title="No Driving">🚗</div>
+                         <div className={`text-xl ${!lifestyle.sleep && 'opacity-20 grayscale'}`} title="Drowsiness">💤</div>
+                     </div>
+                 </div>
+             </div>
 
-                {!isPremium && (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/60 z-10 backdrop-blur-[2px]">
-                        <div className="bg-gray-900 p-5 rounded-2xl shadow-2xl text-center max-w-[85%] border border-gray-700 text-white">
-                            <span className="text-3xl mb-2 block">👑</span>
-                            <h4 className="font-bold text-lg mb-1">Detailed Risks</h4>
-                            <p className="text-xs text-gray-400 mb-4">Unlock complete side effects & safety data.</p>
-                            <button 
-                                onClick={onOpenPremium}
-                                className="w-full bg-gradient-to-r from-yellow-400 to-orange-500 text-black px-4 py-2.5 rounded-xl text-sm font-bold shadow-lg hover:scale-105 transition-transform"
-                            >
-                                Unlock for ₹49
-                            </button>
-                        </div>
-                    </div>
-                )}
-            </section>
-            
-            {/* Share Button */}
-            <button 
-                onClick={handleShare}
-                className="w-full bg-indigo-600 text-white py-4 rounded-2xl font-bold shadow-lg shadow-indigo-600/30 hover:bg-indigo-700 active:scale-95 transition-all flex items-center justify-center"
-            >
-                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>
-                Share with Family
-            </button>
-
-            {/* Feedback Section */}
-            <div className="bg-gray-100 p-5 rounded-2xl">
-                {!feedbackSent ? (
-                    <>
-                        <h4 className="text-xs font-bold text-gray-500 uppercase mb-3 text-center">Was this helpful?</h4>
-                        <div className="flex space-x-4">
-                            <button 
-                                onClick={() => { setFeedbackGiven('yes'); submitFeedback(); }}
-                                className={`flex-1 py-3 rounded-xl border border-gray-200 bg-white font-bold text-sm shadow-sm hover:border-green-400 hover:text-green-600 transition-colors ${feedbackGiven === 'yes' ? 'border-green-500 text-green-600 bg-green-50' : 'text-gray-600'}`}
-                            >
-                                👍 Yes
-                            </button>
-                            <button 
-                                onClick={() => setFeedbackGiven('no')}
-                                className={`flex-1 py-3 rounded-xl border border-gray-200 bg-white font-bold text-sm shadow-sm hover:border-red-400 hover:text-red-600 transition-colors ${feedbackGiven === 'no' ? 'border-red-500 text-red-600 bg-red-50' : 'text-gray-600'}`}
-                            >
-                                👎 No
-                            </button>
-                        </div>
-                        
-                        {feedbackGiven === 'no' && (
-                            <div className="mt-4 animate-fade-in-down">
-                                <textarea 
-                                    className="w-full p-3 border border-gray-300 rounded-xl text-sm mb-3 focus:outline-none focus:border-black focus:ring-1 focus:ring-black" 
-                                    placeholder="What was wrong?"
-                                    value={feedbackText}
-                                    onChange={(e) => setFeedbackText(e.target.value)}
-                                    rows={2}
-                                />
-                                <button 
-                                    onClick={submitFeedback}
-                                    className="w-full py-2 bg-gray-800 text-white text-xs font-bold rounded-lg"
-                                >
-                                    Submit
-                                </button>
-                            </div>
-                        )}
-                    </>
-                ) : (
-                    <div className="text-center text-green-600 font-bold py-2 flex items-center justify-center">
-                        <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                        Thanks for helping us improve!
-                    </div>
-                )}
-            </div>
-            
-            <div className="text-center py-4 border-t border-gray-200">
-                 <p className="text-[10px] text-gray-400 font-medium">
-                    This app does not provide medical diagnosis. Always consult a doctor.
-                </p>
+            <div className="space-y-3 pt-2 print:hidden">
+                <button 
+                    onClick={handleDownloadReport}
+                    className="w-full bg-slate-900 text-white py-4 rounded-2xl font-bold shadow-lg flex items-center justify-center transition-all"
+                >
+                    Download Health Report
+                </button>
+                <button onClick={onClose} className="w-full bg-white text-teal-700 py-4 rounded-2xl font-bold border border-slate-100 shadow-sm">
+                    Back to Scanner
+                </button>
             </div>
         </div>
     </div>

@@ -1,6 +1,6 @@
 {
-  "name": "MediScan AI",
-  "description": "Scan medicines to get instant AI details, set intake reminders, and unlock premium safety insights.",
+  "name": "MedScan",
+  "description": "Scan medicines and prescriptions to get instant AI details, set intake reminders, and unlock premium safety insights.",
   "requestFramePermissions": [
     "camera"
   ]
