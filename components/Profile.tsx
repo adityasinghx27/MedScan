@@ -5,7 +5,7 @@ interface ProfileProps {
 }
 
 const Profile: React.FC<ProfileProps> = ({ isPremium }) => {
-  const deviceId = localStorage.getItem('mediScan_deviceId') || 'Unknown';
+  const deviceId = localStorage.getItem('mediScan_deviceId') || 'Guest';
   const txnId = localStorage.getItem('mediScan_txnId');
 
   return (
@@ -23,7 +23,9 @@ const Profile: React.FC<ProfileProps> = ({ isPremium }) => {
                 </div>
                 
                 <h3 className="text-xl font-bold mt-3 text-gray-800">Guest User</h3>
-                <p className="text-gray-400 text-xs mb-4 break-all opacity-70">ID: {deviceId.substring(0, 12)}...</p>
+                <p className="text-gray-400 text-xs mb-4 break-all opacity-70">
+                    ID: {deviceId.substring(0, 12)}...
+                </p>
 
                 {isPremium ? (
                      <div className="flex flex-col items-center">

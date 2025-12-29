@@ -14,7 +14,7 @@ const DoctorAI: React.FC = () => {
     return [
       {
         id: 'welcome',
-        role: 'assistant',
+        role: 'assistant' as const,
         content: 'Hello! I am your MedScan Doctor AI. How can I help you today? Please remember, I am an AI, not a human doctor.',
         timestamp: Date.now()
       }
@@ -33,9 +33,10 @@ const DoctorAI: React.FC = () => {
   const handleSend = async (text: string) => {
     if (!text.trim() || isLoading) return;
 
+    // Use 'as const' to ensure the role property is correctly typed as a literal
     const userMsg: ChatMessage = {
       id: Date.now().toString(),
-      role: 'user',
+      role: 'user' as const,
       content: text,
       timestamp: Date.now()
     };
@@ -47,9 +48,10 @@ const DoctorAI: React.FC = () => {
     try {
       const responseText = await getDoctorAIResponse([...messages, userMsg]);
 
+      // Use 'as const' to fix the role assignment error and ensure Date.now() is used
       const assistantMsg: ChatMessage = {
         id: (Date.now() + 1).toString(),
-        role: 'assistant',
+        role: 'assistant' as const,
         content: responseText,
         timestamp: Date.now()
       };
@@ -64,9 +66,9 @@ const DoctorAI: React.FC = () => {
 
   const clearChat = () => {
     if (confirm("Clear all chat history?")) {
-      const welcome = {
+      const welcome: ChatMessage = {
         id: 'welcome',
-        role: 'assistant',
+        role: 'assistant' as const,
         content: 'Hello! I am your MedScan Doctor AI. How can I help you today? Please remember, I am an AI, not a human doctor.',
         timestamp: Date.now()
       };

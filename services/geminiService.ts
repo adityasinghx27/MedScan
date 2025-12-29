@@ -1,10 +1,11 @@
 
-import { GoogleGenAI, Type, Schema } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 import { MedicineData, PatientProfile, ChatMessage } from "../types";
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-const MEDICINE_SCHEMA: Schema = {
+// Define the medicine schema for structured JSON output as a plain object to avoid deprecated types
+const MEDICINE_SCHEMA: any = {
   type: Type.OBJECT,
   properties: {
     name: { type: Type.STRING },
@@ -118,7 +119,6 @@ export const analyzeMedicineImage = async (base64Images: string[], profile: Pati
         }
     } catch (innerError) {
         console.warn("Primary analysis attempt failed:", innerError);
-        // Attempt fallback or simply throw to be caught by outer handler
         throw innerError; 
     }
     
@@ -149,7 +149,6 @@ export const getHealthTip = async (): Promise<string> => {
         });
         return response.text || "Always check the expiry date of your medicines.";
     } catch (e) {
-        // Silent fail for health tip
         return "Stay hydrated and consult your doctor regularly.";
     }
 }
@@ -161,7 +160,6 @@ export const getDoctorAIResponse = async (history: ChatMessage[]): Promise<strin
       parts: [{ text: msg.content }]
     }));
 
-    // Primary attempt with Pro model
     try {
         const response = await ai.models.generateContent({
             model: "gemini-3-pro-preview",
@@ -179,7 +177,6 @@ export const getDoctorAIResponse = async (history: ChatMessage[]): Promise<strin
              return "I'm currently receiving too many requests. Please try again in a few minutes.";
         }
 
-        // Fallback to Flash model
         try {
             const response = await ai.models.generateContent({
                 model: "gemini-3-flash-preview",

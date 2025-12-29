@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 
 type Tab = 'FAQ' | 'PRIVACY' | 'TERMS';

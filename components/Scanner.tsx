@@ -1,4 +1,3 @@
-
 import React, { useRef, useState, useCallback, useEffect } from 'react';
 import { analyzeMedicineImage } from '../services/geminiService';
 import { MedicineData, PatientProfile, AgeGroup, Gender, Language } from '../types';
@@ -12,7 +11,6 @@ const Scanner: React.FC<ScannerProps> = ({ onScanComplete, onError }) => {
   const [images, setImages] = useState<string[]>([]);
   const [analyzing, setAnalyzing] = useState(false);
   const [showForm, setShowForm] = useState(false);
-  const [countdown, setCountdown] = useState(8);
   
   const [ageGroup, setAgeGroup] = useState<AgeGroup>('adult');
   const [gender, setGender] = useState<Gender>('male');
@@ -25,17 +23,6 @@ const Scanner: React.FC<ScannerProps> = ({ onScanComplete, onError }) => {
 
   const triggerCamera = () => cameraInputRef.current?.click();
   const triggerGallery = () => galleryInputRef.current?.click();
-
-  // Handle countdown logic
-  useEffect(() => {
-    let timer: number;
-    if (analyzing && countdown > 1) {
-      timer = window.setInterval(() => {
-        setCountdown((prev) => prev - 1);
-      }, 1000);
-    }
-    return () => clearInterval(timer);
-  }, [analyzing, countdown]);
 
   const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -58,13 +45,12 @@ const Scanner: React.FC<ScannerProps> = ({ onScanComplete, onError }) => {
     if (images.length === 0) return;
     setShowForm(false);
     setAnalyzing(true);
-    setCountdown(8); // Reset countdown to 8 seconds
     try {
       const profile = { ageGroup, gender, isPregnant, isBreastfeeding, language };
       const data = await analyzeMedicineImage(images, profile);
       onScanComplete(data, profile);
-    } catch (err) {
-      onError("Scan failed. Ensure the text is clear and try again.");
+    } catch (err: any) {
+      onError(err.message || "Scan failed. Ensure the text is clear and try again.");
     } finally {
       setAnalyzing(false);
     }
@@ -145,19 +131,21 @@ const Scanner: React.FC<ScannerProps> = ({ onScanComplete, onError }) => {
                     </div>
                 )}
             </div>
-            <h3 className="text-4xl font-black text-slate-900 mb-3 tracking-tighter">Checking Safety...</h3>
+            <h3 className="text-4xl font-black text-slate-900 mb-3 tracking-tighter">
+                {images.length > 1 ? 'Checking Combinations...' : 'Analyzing your medicine...'}
+            </h3>
             
-            {/* Countdown UI */}
+            {/* Dynamic Status Message */}
             <div className="mb-10">
               <div className="inline-flex items-center space-x-2 bg-slate-50 px-5 py-2 rounded-full border border-slate-100 shadow-inner">
                  <div className="w-2 h-2 bg-teal-500 rounded-full animate-pulse"></div>
                  <p className="text-slate-600 text-[10px] font-black uppercase tracking-[0.2em]">
-                    {countdown > 1 ? `Results in ~${countdown}s` : 'Finalizing Report...'}
+                    Hold tight, almost there!
                  </p>
               </div>
             </div>
             
-            <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.3em] opacity-70">Cross-checking Interactions</p>
+            <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.3em] opacity-70">Cross-checking Interactions & Safety</p>
         </div>
       ) : (
         <div className="w-full space-y-6 animate-slide-up">
@@ -204,20 +192,29 @@ const Scanner: React.FC<ScannerProps> = ({ onScanComplete, onError }) => {
                 </div>
            )}
            
-           <button onClick={triggerGallery} className="w-full bg-white py-7 px-8 rounded-[3rem] font-black shadow-xl shadow-slate-200/50 flex items-center justify-between hover:bg-slate-50 transition-all active:scale-95 group border border-slate-100">
-             <div className="flex items-center">
-                 <div className="w-16 h-16 bg-slate-50 text-indigo-600 rounded-[1.8rem] flex items-center justify-center mr-6 group-hover:scale-110 transition-transform shadow-lg border border-indigo-50">
-                    <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                 </div>
-                 <div className="text-left">
-                    <span className="block text-slate-900 text-2xl font-black tracking-tighter leading-none mb-1">Gallery Import</span>
-                    <span className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em] opacity-80">Choose from photos</span>
-                 </div>
-             </div>
-             <div className="w-11 h-11 rounded-full bg-slate-100/50 flex items-center justify-center group-hover:bg-slate-900 group-hover:text-white transition-all duration-300">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7" /></svg>
-             </div>
-           </button>
+           <button onClick={triggerGallery} className="group relative w-full rounded-[3rem] overflow-hidden shadow-xl shadow-slate-200/50 transition-all active:scale-95 hover:scale-[1.03] border-4 border-white">
+                {/* Gradient Background */}
+                <div className="absolute inset-0 bg-gradient-to-br from-indigo-500 to-blue-700 transition-colors group-hover:from-indigo-600 group-hover:to-blue-800"></div>
+                {/* Upload Scan Animation Effect */}
+                <div className="animate-upload-scan z-20"></div>
+                {/* Internal Content */}
+                <div className="relative z-10 p-7 px-8 flex items-center justify-between">
+                    <div className="flex items-center">
+                        {/* Icon Container with pulse */}
+                        <div className="w-16 h-16 bg-white/20 backdrop-blur-2xl text-white rounded-[1.8rem] flex items-center justify-center mr-6 group-hover:scale-110 transition-transform shadow-lg border border-white/40 animate-pulse-soft">
+                            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                        </div>
+                        <div className="text-left">
+                            <span className="block text-white text-2xl font-black tracking-tighter leading-none mb-1">Gallery Import</span>
+                            <span className="text-blue-100/80 text-[10px] font-black uppercase tracking-[0.2em]">Choose from photos</span>
+                        </div>
+                    </div>
+                    {/* Arrow Icon */}
+                    <div className="w-11 h-11 rounded-full bg-white/20 flex items-center justify-center group-hover:bg-white/30 transition-all duration-300">
+                       <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7" /></svg>
+                    </div>
+                </div>
+            </button>
         </div>
       )}
     </div>

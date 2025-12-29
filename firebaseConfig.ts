@@ -1,16 +1,27 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
+import { getAnalytics } from "firebase/analytics";
 
-// TODO: Replace with your actual Firebase project configuration
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY_HERE",
-  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_PROJECT_ID.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyDe0N_wOr6GgMRkcfFy1Sxbm7WDsQKFcHc",
+  authDomain: "medscanindia.firebaseapp.com",
+  projectId: "medscanindia",
+  storageBucket: "medscanindia.firebasestorage.app",
+  messagingSenderId: "732032195788",
+  appId: "1:732032195788:web:23105b2d88d74d597fb669",
+  measurementId: "G-0H8L4S3C2M"
 };
 
-// Initialize Firebase only if it hasn't been initialized already to prevent "App already exists" errors
-const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-export const db = getFirestore(app);
+// Initialize Firebase only once
+let app;
+let analytics;
+
+try {
+    app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+    // Initialize services
+    analytics = getAnalytics(app);
+} catch (error) {
+    console.warn("Firebase initialization failed", error);
+}
+
+export { analytics };
+export default app;

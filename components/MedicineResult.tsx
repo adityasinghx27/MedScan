@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { MedicineData, PatientProfile } from '../types';
 import { checkConditionSafety } from '../services/geminiService';
@@ -174,7 +173,7 @@ const MedicineResult: React.FC<MedicineResultProps> = ({
                         </div>
                         {medsList.length > 1 && (
                              <div className="bg-white/20 backdrop-blur-md px-3 py-1.5 rounded-lg border border-white/10">
-                                <span className="text-[10px] font-bold">Combo Check: {medsList.length} Items</span>
+                                <span className="text-[10px] font-bold">Interaction Check: {medsList.length} Items</span>
                             </div>
                         )}
                     </div>
@@ -233,7 +232,7 @@ const MedicineResult: React.FC<MedicineResultProps> = ({
                             interaction.severity === 'Safe' ? 'text-emerald-700' :
                             interaction.severity === 'Warning' ? 'text-amber-700' :
                             'text-rose-700'
-                        }`}>Combination Safety</h3>
+                        }`}>Interactions & Safety Check</h3>
                         <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${
                              interaction.severity === 'Safe' ? 'bg-emerald-500 text-white' :
                              interaction.severity === 'Warning' ? 'bg-amber-500 text-white' :

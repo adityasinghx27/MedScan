@@ -1,4 +1,5 @@
 
+
 import React from 'react';
 import { ScanHistoryItem, MedicineData } from '../types';
 

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import Scanner from './components/Scanner';
 import MedicineResult from './components/MedicineResult';
@@ -32,35 +31,31 @@ const App: React.FC = () => {
   const [isPreviouslyScanned, setIsPreviouslyScanned] = useState(false);
   const [overdoseWarning, setOverdoseWarning] = useState(false);
   const [activeAlarm, setActiveAlarm] = useState<Reminder | null>(null);
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(() => Notification.permission);
   
+  // -- Initialization --
   useEffect(() => {
-    try {
-      if (!localStorage.getItem('mediScan_deviceId')) {
-          localStorage.setItem('mediScan_deviceId', crypto.randomUUID());
-      }
-      const savedReminders = localStorage.getItem('mediScan_reminders');
-      if (savedReminders) setReminders(JSON.parse(savedReminders));
-      const savedHistory = localStorage.getItem('mediScan_history');
-      if (savedHistory) setScanHistory(JSON.parse(savedHistory));
-      getHealthTip().then(setHealthTip).catch(() => setHealthTip("Stay hydrated and check expiry dates."));
-    } catch (e) {
-      console.error("Initialization error", e);
+    // 1. Setup Device ID (Guest ID)
+    if (!localStorage.getItem('mediScan_deviceId')) {
+        localStorage.setItem('mediScan_deviceId', crypto.randomUUID());
     }
 
-    // Alarm Check Logic
-    const interval = setInterval(() => {
-        const now = new Date();
-        const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+    // 2. Load Local Data (Guest Data)
+    try {
+        const savedReminders = localStorage.getItem('mediScan_reminders');
+        if (savedReminders) setReminders(JSON.parse(savedReminders));
         
-        const triggered = reminders.find(r => r.active && r.time === currentTime && (!r.snoozedUntil || Date.now() >= r.snoozedUntil));
-        if (triggered && !activeAlarm) {
-            setActiveAlarm(triggered);
-        }
-    }, 10000);
+        const savedHistory = localStorage.getItem('mediScan_history');
+        if (savedHistory) setScanHistory(JSON.parse(savedHistory));
+    } catch (e) {
+        console.error("Failed to load local data", e);
+    }
 
-    return () => clearInterval(interval);
-  }, [reminders, activeAlarm]);
+    // 3. Fetch Global Content
+    getHealthTip().then(setHealthTip).catch(() => setHealthTip("Stay hydrated and check expiry dates."));
+  }, []); 
 
+  // -- Persistence Effects --
   useEffect(() => {
     localStorage.setItem('mediScan_reminders', JSON.stringify(reminders));
   }, [reminders]);
@@ -69,7 +64,29 @@ const App: React.FC = () => {
     localStorage.setItem('mediScan_history', JSON.stringify(scanHistory));
   }, [scanHistory]);
 
-  const handleUpgrade = (txnId?: string) => {
+  // -- Alarm Check Logic --
+  useEffect(() => {
+    const interval = setInterval(() => {
+        const now = new Date();
+        const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+        
+        const triggered = reminders.find(r => r.active && r.time === currentTime && (!r.snoozedUntil || Date.now() >= r.snoozedUntil));
+        if (triggered && !activeAlarm) {
+            setActiveAlarm(triggered);
+        }
+    }, 10000); // Check every 10 seconds
+
+    return () => clearInterval(interval);
+  }, [reminders, activeAlarm]);
+
+  const requestNotificationPermission = async () => {
+    if (Notification.permission === 'default') {
+      const permission = await Notification.requestPermission();
+      setNotificationPermission(permission);
+    }
+  };
+
+  const handleUpgrade = async (txnId?: string) => {
     setIsPremium(true);
     localStorage.setItem('mediScan_premium', 'true');
     if (txnId) localStorage.setItem('mediScan_txnId', txnId);
@@ -148,7 +165,7 @@ const App: React.FC = () => {
           </div>
         );
       case AppView.REMINDERS:
-        return <div className="pb-24 bg-slate-50 min-h-screen"><Reminders reminders={reminders} addReminder={addReminder} deleteReminder={deleteReminder} toggleReminder={toggleReminder} /></div>;
+        return <div className="pb-24 bg-slate-50 min-h-screen"><Reminders reminders={reminders} addReminder={addReminder} deleteReminder={deleteReminder} toggleReminder={toggleReminder} notificationPermission={notificationPermission} onRequestNotificationPermission={requestNotificationPermission} /></div>;
       case AppView.HISTORY:
         return <div className="pb-24 bg-slate-50 min-h-screen"><History history={scanHistory} onSelectItem={(data) => { setScannedData(data); setOverdoseWarning(false); setIsPreviouslyScanned(true); }} onClearHistory={() => setScanHistory([])} /></div>;
       case AppView.DOCTOR_AI:
@@ -174,11 +191,11 @@ const App: React.FC = () => {
             onTake={() => { setActiveAlarm(null); toggleReminder(activeAlarm.id); }}
             onSnooze={(mins) => { setActiveAlarm(null); }}
             onSkip={() => { setActiveAlarm(null); }}
+            notificationPermission={notificationPermission}
           />
       )}
 
       {!scannedData && !activeAlarm && (
-        // FULL WIDTH SOLID BOTTOM BAR - Fixes transparency issues
         <div className="fixed bottom-0 left-0 right-0 max-w-md mx-auto z-[100] bg-white border-t border-slate-100 shadow-[0_-5px_20px_rgba(0,0,0,0.05)] pb-safe">
             <nav className="flex justify-around items-center px-2 py-3">
                 {[
@@ -186,11 +203,11 @@ const App: React.FC = () => {
                     { view: AppView.REMINDERS, icon: "M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z", label: "Alarms" },
                     { view: AppView.DOCTOR_AI, icon: "M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z", label: "Doctor" },
                     { view: AppView.HISTORY, icon: "M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z", label: "History" },
-                    { view: AppView.PROFILE, icon: "M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z", label: "Pro" }
+                    { view: AppView.PROFILE, icon: "M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z", label: "Me" }
                 ].map((item) => {
                     const isActive = currentView === item.view || (item.view === AppView.HOME && currentView === AppView.SCANNER);
                     return (
-                        <button key={item.label} onClick={() => (item.view === AppView.PROFILE && !isPremium) ? setShowPremiumModal(true) : setCurrentView(item.view)} className={`flex flex-col items-center justify-center w-16 py-1 rounded-xl transition-all duration-300 ${isActive ? 'text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}>
+                        <button key={item.label} onClick={() => setCurrentView(item.view)} className={`flex flex-col items-center justify-center w-16 py-1 rounded-xl transition-all duration-300 ${isActive ? 'text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}>
                             <div className={`mb-1 transition-all duration-300 ${isActive ? 'bg-slate-900 text-white p-2.5 rounded-2xl shadow-lg' : ''}`}>
                                 <svg className={`w-6 h-6 ${isActive ? 'stroke-2' : 'stroke-[1.5]'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" d={

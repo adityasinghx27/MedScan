@@ -1,7 +1,15 @@
 
+
 export type AgeGroup = 'child' | 'adult' | 'senior';
 export type Gender = 'male' | 'female';
 export type Language = 'english' | 'hindi' | 'hinglish';
+
+export interface User {
+  uid: string;
+  email: string | null;
+  isGuest: boolean;
+  joinedAt: number;
+}
 
 export interface PatientProfile {
   ageGroup: AgeGroup;
@@ -80,6 +88,7 @@ export interface Reminder {
   soundType: SoundType;
   customSoundData?: string; // Base64 audio data
   voiceTone?: VoiceTone;
+  voiceGender?: 'male' | 'female'; // Added voice gender for customization
   active: boolean;
   snoozedUntil: number | null;
   createdAt: number;
