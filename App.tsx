@@ -52,7 +52,7 @@ const App: React.FC = () => {
     }
 
     // 3. Fetch Global Content
-    getHealthTip().then(setHealthTip).catch(() => setHealthTip("Stay hydrated and check expiry dates."));
+    getHealthTip().then(setHealthTip).catch(() => setHealthTip("Always verify medicine with a doctor."));
   }, []); 
 
   // -- Persistence Effects --
@@ -74,7 +74,7 @@ const App: React.FC = () => {
         if (triggered && !activeAlarm) {
             setActiveAlarm(triggered);
         }
-    }, 10000); // Check every 10 seconds
+    }, 10000); 
 
     return () => clearInterval(interval);
   }, [reminders, activeAlarm]);
@@ -115,7 +115,17 @@ const App: React.FC = () => {
 
   const renderContent = () => {
     if (scannedData) {
-      return <MedicineResult data={scannedData} profile={patientProfile} isPremium={isPremium} isPreviouslyScanned={isPreviouslyScanned} overdoseWarning={overdoseWarning} onOpenPremium={() => setShowPremiumModal(true)} onClose={() => setScannedData(null)} />;
+      return (
+        <MedicineResult 
+          data={scannedData} 
+          profile={patientProfile} 
+          isPremium={isPremium} 
+          isPreviouslyScanned={isPreviouslyScanned} 
+          overdoseWarning={overdoseWarning} 
+          onOpenPremium={() => setShowPremiumModal(true)} 
+          onClose={() => setScannedData(null)} 
+        />
+      );
     }
 
     switch (currentView) {
@@ -123,7 +133,6 @@ const App: React.FC = () => {
       case AppView.SCANNER:
         return (
           <div className="bg-slate-50 min-h-screen">
-            {/* Sticky Header with Solid Background */}
             <header className="sticky top-0 z-50 bg-slate-50 px-6 pt-10 pb-4 flex justify-between items-center shadow-sm border-b border-slate-100/50">
                <div className="group cursor-default">
                    <div className="flex items-center space-x-2.5">
@@ -169,7 +178,7 @@ const App: React.FC = () => {
       case AppView.HISTORY:
         return <div className="pb-24 bg-slate-50 min-h-screen"><History history={scanHistory} onSelectItem={(data) => { setScannedData(data); setOverdoseWarning(false); setIsPreviouslyScanned(true); }} onClearHistory={() => setScanHistory([])} /></div>;
       case AppView.DOCTOR_AI:
-        return <DoctorAI />;
+        return <DoctorAI isPremium={isPremium} onOpenPremium={() => setShowPremiumModal(true)} />;
       case AppView.INFO:
           return <div className="pb-24 bg-slate-50 min-h-screen"><LegalAndHelp /></div>;
       case AppView.PROFILE:
