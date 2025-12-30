@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ChatMessage } from '../types';
-import { getDoctorAIResponse } from '../services/geminiService';
+import { ChatMessage } from '../types.ts';
+import { getDoctorAIResponse } from '../services/geminiService.ts';
 
 interface DoctorAIProps {
   isPremium: boolean;

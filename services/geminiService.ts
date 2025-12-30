@@ -1,6 +1,5 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
-import { MedicineData, PatientProfile, ChatMessage } from "../types";
+import { MedicineData, PatientProfile, ChatMessage } from "../types.ts";
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 

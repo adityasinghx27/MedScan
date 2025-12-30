@@ -1,15 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import Scanner from './components/Scanner';
-import MedicineResult from './components/MedicineResult';
-import Reminders from './components/Reminders';
-import History from './components/History';
-import DoctorAI from './components/DoctorAI';
-import PremiumModal from './components/PremiumModal';
-import Profile from './components/Profile';
-import LegalAndHelp from './components/LegalAndHelp';
-import AlarmRingingModal from './components/AlarmRingingModal';
-import { MedicineData, AppView, Reminder, PatientProfile, ScanHistoryItem } from './types';
-import { getHealthTip } from './services/geminiService';
+import Scanner from './components/Scanner.tsx';
+import MedicineResult from './components/MedicineResult.tsx';
+import Reminders from './components/Reminders.tsx';
+import History from './components/History.tsx';
+import DoctorAI from './components/DoctorAI.tsx';
+import PremiumModal from './components/PremiumModal.tsx';
+import Profile from './components/Profile.tsx';
+import LegalAndHelp from './components/LegalAndHelp.tsx';
+import AlarmRingingModal from './components/AlarmRingingModal.tsx';
+import { MedicineData, AppView, Reminder, PatientProfile, ScanHistoryItem } from './types.ts';
+import { getHealthTip } from './services/geminiService.ts';
 
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<AppView>(AppView.HOME);
