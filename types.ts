@@ -1,8 +1,18 @@
-
-
 export type AgeGroup = 'child' | 'adult' | 'senior';
 export type Gender = 'male' | 'female';
 export type Language = 'english' | 'hindi' | 'hinglish';
+export type VoiceGender = 'male' | 'female';
+
+export interface FamilyMember {
+  id: string;
+  name: string;
+  ageGroup: AgeGroup;
+  gender: Gender;
+  isPregnant: boolean;
+  isBreastfeeding: boolean;
+  language: Language;
+  avatar: string;
+}
 
 export interface User {
   uid: string;
@@ -86,9 +96,9 @@ export interface Reminder {
   repeat: RepeatType;
   customDays: number[]; 
   soundType: SoundType;
-  customSoundData?: string; // Base64 audio data
+  customSoundData?: string; 
   voiceTone?: VoiceTone;
-  voiceGender?: 'male' | 'female'; // Added voice gender for customization
+  voiceGender?: VoiceGender;
   active: boolean;
   snoozedUntil: number | null;
   createdAt: number;

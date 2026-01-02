@@ -8,7 +8,7 @@ import PremiumModal from './components/PremiumModal.tsx';
 import Profile from './components/Profile.tsx';
 import LegalAndHelp from './components/LegalAndHelp.tsx';
 import AlarmRingingModal from './components/AlarmRingingModal.tsx';
-import { MedicineData, AppView, Reminder, PatientProfile, ScanHistoryItem } from './types.ts';
+import { MedicineData, AppView, Reminder, PatientProfile, ScanHistoryItem, FamilyMember } from './types.ts';
 import { getHealthTip } from './services/geminiService.ts';
 
 const App: React.FC = () => {
@@ -28,6 +28,7 @@ const App: React.FC = () => {
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [healthTip, setHealthTip] = useState<string>("");
   const [scanHistory, setScanHistory] = useState<ScanHistoryItem[]>([]);
+  const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([]);
   const [isPreviouslyScanned, setIsPreviouslyScanned] = useState(false);
   const [overdoseWarning, setOverdoseWarning] = useState(false);
   const [activeAlarm, setActiveAlarm] = useState<Reminder | null>(null);
@@ -35,27 +36,39 @@ const App: React.FC = () => {
   
   // -- Initialization --
   useEffect(() => {
-    // 1. Setup Device ID (Guest ID)
     if (!localStorage.getItem('mediScan_deviceId')) {
         localStorage.setItem('mediScan_deviceId', crypto.randomUUID());
     }
 
-    // 2. Load Local Data (Guest Data)
     try {
         const savedReminders = localStorage.getItem('mediScan_reminders');
         if (savedReminders) setReminders(JSON.parse(savedReminders));
         
         const savedHistory = localStorage.getItem('mediScan_history');
         if (savedHistory) setScanHistory(JSON.parse(savedHistory));
+
+        const savedFamily = localStorage.getItem('mediScan_family');
+        if (savedFamily) setFamilyMembers(JSON.parse(savedFamily));
+        else {
+          const defaultMe: FamilyMember = {
+            id: 'me',
+            name: 'Me',
+            ageGroup: 'adult',
+            gender: 'male',
+            isPregnant: false,
+            isBreastfeeding: false,
+            language: 'english',
+            avatar: '🧑‍💻'
+          };
+          setFamilyMembers([defaultMe]);
+        }
     } catch (e) {
         console.error("Failed to load local data", e);
     }
 
-    // 3. Fetch Global Content
     getHealthTip().then(setHealthTip).catch(() => setHealthTip("Always verify medicine with a doctor."));
   }, []); 
 
-  // -- Persistence Effects --
   useEffect(() => {
     localStorage.setItem('mediScan_reminders', JSON.stringify(reminders));
   }, [reminders]);
@@ -64,7 +77,10 @@ const App: React.FC = () => {
     localStorage.setItem('mediScan_history', JSON.stringify(scanHistory));
   }, [scanHistory]);
 
-  // -- Alarm Check Logic --
+  useEffect(() => {
+    localStorage.setItem('mediScan_family', JSON.stringify(familyMembers));
+  }, [familyMembers]);
+
   useEffect(() => {
     const interval = setInterval(() => {
         const now = new Date();
@@ -123,7 +139,12 @@ const App: React.FC = () => {
           isPreviouslyScanned={isPreviouslyScanned} 
           overdoseWarning={overdoseWarning} 
           onOpenPremium={() => setShowPremiumModal(true)} 
-          onClose={() => setScannedData(null)} 
+          onClose={() => setScannedData(null)}
+          onAddReminder={(rem) => {
+            addReminder(rem);
+            setCurrentView(AppView.REMINDERS);
+            setScannedData(null);
+          }}
         />
       );
     }
@@ -157,7 +178,7 @@ const App: React.FC = () => {
                      </div>
                 )}
 
-                <Scanner onScanComplete={handleScanComplete} onError={(msg) => alert(msg)} />
+                <Scanner familyMembers={familyMembers} onScanComplete={handleScanComplete} onError={(msg) => alert(msg)} />
                 
                 {!isPremium && (
                     <div onClick={() => setShowPremiumModal(true)} className="mt-10 bg-slate-900 text-white p-7 rounded-[3rem] shadow-2xl shadow-slate-900/20 flex justify-between items-center cursor-pointer transform transition-all hover:translate-y-[-2px] active:scale-95 group relative overflow-hidden border border-slate-800">
@@ -182,7 +203,15 @@ const App: React.FC = () => {
       case AppView.INFO:
           return <div className="pb-24 bg-slate-50 min-h-screen"><LegalAndHelp /></div>;
       case AppView.PROFILE:
-          return <div className="pb-24 bg-slate-50 min-h-screen"><Profile isPremium={isPremium} /></div>;
+          return (
+            <div className="pb-24 bg-slate-50 min-h-screen">
+              <Profile 
+                isPremium={isPremium} 
+                familyMembers={familyMembers} 
+                setFamilyMembers={setFamilyMembers} 
+              />
+            </div>
+          );
       default:
         return <div className="p-10 text-center">View not found</div>;
     }

@@ -1,7 +1,5 @@
-
-
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Reminder, FoodContext, RepeatType, SoundType, VoiceTone } from '../types';
+import { Reminder, FoodContext, RepeatType, SoundType, VoiceTone, VoiceGender } from '../types';
 
 interface RemindersProps {
   reminders: Reminder[];
@@ -21,87 +19,72 @@ const Reminders: React.FC<RemindersProps> = ({ reminders, addReminder, deleteRem
   const [repeat, setRepeat] = useState<RepeatType>('daily');
   const [soundType, setSoundType] = useState<SoundType>('ringtone');
   const [voiceTone, setVoiceTone] = useState<VoiceTone>('normal');
-  const [voiceGender, setVoiceGender] = useState<'male' | 'female'>('female'); // New state for voice gender
+  const [voiceGender, setVoiceGender] = useState<VoiceGender>('female');
   const [customSoundData, setCustomSoundData] = useState<string | undefined>(undefined);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const audioContextRef = useRef<AudioContext | null>(null); // Ref for AudioContext
+  const audioContextRef = useRef<AudioContext | null>(null);
 
   useEffect(() => {
-    // Request permission if default when component mounts and not already granted
     if (notificationPermission === 'default') {
       onRequestNotificationPermission();
     }
   }, [notificationPermission, onRequestNotificationPermission]);
 
-  const getSpeechVoice = useCallback((gender: 'male' | 'female', lang: string = 'en-US'): SpeechSynthesisVoice | null => {
+  const getSpeechVoice = useCallback((gender: VoiceGender, lang: string = 'en-US'): SpeechSynthesisVoice | null => {
     const voices = window.speechSynthesis.getVoices();
     const langPrefix = lang.substring(0, 2).toLowerCase();
-
-    // Filter voices primarily by language
     const filteredVoicesByLang = voices.filter(voice => voice.lang.toLowerCase().startsWith(langPrefix));
 
     let selectedVoice: SpeechSynthesisVoice | null = null;
 
     if (gender === 'male') {
-        // Prioritize explicit male voice names or strong male indicators
         selectedVoice = filteredVoicesByLang.find(voice => 
             voice.name.toLowerCase().includes('male') || 
             voice.name.toLowerCase().includes('david') || 
             voice.name.toLowerCase().includes('aaron') ||
             voice.name.toLowerCase().includes('daniel') ||
             (voice.name.toLowerCase().includes('google') && voice.name.toLowerCase().includes('us english') && !voice.name.toLowerCase().includes('female')) ||
-            (!voice.name.toLowerCase().includes('female') && !voice.name.toLowerCase().includes('zira') && !voice.name.toLowerCase().includes('sara') && !voice.name.toLowerCase().includes('helen')) // Aggressively exclude known female names
+            (!voice.name.toLowerCase().includes('female') && !voice.name.toLowerCase().includes('zira') && !voice.name.toLowerCase().includes('sara') && !voice.name.toLowerCase().includes('helen'))
         );
-
-        // Fallback 1: If no specific male voice in current language, try any male voice from all voices
         if (!selectedVoice) {
             selectedVoice = voices.find(voice =>
                 (voice.name.toLowerCase().includes('male') ||
                 voice.name.toLowerCase().includes('david') ||
-                voice.name.toLowerCase().includes('aaron') ||
-                voice.name.toLowerCase().includes('daniel')) &&
-                !voice.name.toLowerCase().includes('female') && !voice.name.toLowerCase().includes('zira') && !voice.name.toLowerCase().includes('sara')
+                voice.name.toLowerCase().includes('aaron')) &&
+                !voice.name.toLowerCase().includes('female')
             );
         }
-
-    } else { // female
-        // Prioritize explicit female voice names or strong female indicators
+    } else {
         selectedVoice = filteredVoicesByLang.find(voice => 
             voice.name.toLowerCase().includes('female') || 
             voice.name.toLowerCase().includes('zira') || 
             voice.name.toLowerCase().includes('sara') ||
             voice.name.toLowerCase().includes('helen') ||
             (voice.name.toLowerCase().includes('google') && voice.name.toLowerCase().includes('us english') && voice.name.toLowerCase().includes('female')) ||
-            (!voice.name.toLowerCase().includes('male') && !voice.name.toLowerCase().includes('david') && !voice.name.toLowerCase().includes('aaron') && !voice.name.toLowerCase().includes('daniel')) // Exclude known male names
+            (!voice.name.toLowerCase().includes('male') && !voice.name.toLowerCase().includes('david') && !voice.name.toLowerCase().includes('aaron'))
         );
-        
-        // Fallback 1: If no specific female voice in current language, try any female voice from all voices
         if (!selectedVoice) {
             selectedVoice = voices.find(voice =>
                 (voice.name.toLowerCase().includes('female') ||
                 voice.name.toLowerCase().includes('zira') ||
-                voice.name.toLowerCase().includes('sara') ||
-                voice.name.toLowerCase().includes('helen')) &&
-                !voice.name.toLowerCase().includes('male') && !voice.name.toLowerCase().includes('david') && !voice.name.toLowerCase().includes('aaron') && !voice.name.toLowerCase().includes('daniel')
+                voice.name.toLowerCase().includes('sara')) &&
+                !voice.name.toLowerCase().includes('male')
             );
         }
     }
-    
-    // Final fallback: browser default voice, or first available voice if nothing matches
     return selectedVoice || voices.find(voice => voice.default) || (voices.length > 0 ? voices[0] : null);
   }, []);
 
-  const previewSound = useCallback((type: SoundType, tone?: VoiceTone, customData?: string, gender?: 'male' | 'female') => {
-      window.speechSynthesis.cancel(); // Stop any ongoing speech
+  const previewSound = useCallback((type: SoundType, tone?: VoiceTone, customData?: string, gender?: VoiceGender) => {
+      window.speechSynthesis.cancel();
 
-      // Ensure AudioContext is ready for tones
       if (type !== 'voice' && type !== 'custom') {
         if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
             audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
         }
         if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
-            audioContextRef.current.resume().catch(e => console.error("AudioContext resume failed for preview:", e));
+            audioContextRef.current.resume().catch(e => console.error("AudioContext resume failed:", e));
         }
       }
 
@@ -124,19 +107,15 @@ const Reminders: React.FC<RemindersProps> = ({ reminders, addReminder, deleteRem
 
           const u = new SpeechSynthesisUtterance(text);
           u.lang = lang;
-          u.rate = 0.9; // slightly slower for better clarity in preview
+          u.rate = 0.9;
           u.volume = 0.9;
           
-          // Wait for voices to be loaded before setting the voice
           const setVoiceAndSpeak = () => {
             const selectedVoice = getSpeechVoice(currentGender, lang);
-            if (selectedVoice) {
-                u.voice = selectedVoice;
-            }
+            if (selectedVoice) u.voice = selectedVoice;
             window.speechSynthesis.speak(u);
           };
 
-          // If voices are not yet loaded, wait for the event
           if (window.speechSynthesis.getVoices().length === 0) {
             window.speechSynthesis.onvoiceschanged = setVoiceAndSpeak;
           } else {
@@ -145,19 +124,19 @@ const Reminders: React.FC<RemindersProps> = ({ reminders, addReminder, deleteRem
           
       } else if (type === 'custom' && customData) {
           const audio = new Audio(customData);
-          audio.volume = 0.8; // Set a default volume for preview
+          audio.volume = 0.8;
           audio.play().catch((e) => console.error("Custom audio preview failed:", e));
-          setTimeout(() => { if (!audio.paused) audio.pause(); }, 3000); // Stop after 3 seconds
-      } else { // Tone sounds
+          setTimeout(() => { if (!audio.paused) audio.pause(); }, 3000);
+      } else {
            try {
                const ctx = audioContextRef.current;
-               if (!ctx) return; // Should not happen with checks above
+               if (!ctx) return;
 
                const osc = ctx.createOscillator();
                const gain = ctx.createGain();
                osc.connect(gain); 
                gain.connect(ctx.destination);
-               gain.gain.setValueAtTime(0.5, ctx.currentTime); // Default volume for tones
+               gain.gain.setValueAtTime(0.5, ctx.currentTime);
 
                if (type === 'soft') { osc.type = 'sine'; osc.frequency.setValueAtTime(350, ctx.currentTime); }
                else if (type === 'loud') { osc.type = 'square'; osc.frequency.setValueAtTime(600, ctx.currentTime); }
@@ -208,7 +187,7 @@ const Reminders: React.FC<RemindersProps> = ({ reminders, addReminder, deleteRem
         soundType, 
         customSoundData,
         voiceTone: soundType === 'voice' ? voiceTone : undefined, 
-        voiceGender: soundType === 'voice' ? voiceGender : undefined, // Save voice gender
+        voiceGender: soundType === 'voice' ? voiceGender : undefined,
         active: true, 
         snoozedUntil: null, 
         createdAt: Date.now() 
@@ -287,21 +266,25 @@ const Reminders: React.FC<RemindersProps> = ({ reminders, addReminder, deleteRem
                      ))}
                 </div>
                 {soundType === 'voice' && (
-                    <div className="bg-teal-50 p-5 rounded-3xl space-y-4 border border-teal-100 animate-fade-in">
-                        {/* Voice Tone Selection */}
-                        <div className="flex space-x-2">
-                            {(['normal', 'strict', 'friendly', 'hindi'] as VoiceTone[]).map(t => (
-                                <button key={t} type="button" onClick={() => { setVoiceTone(t); previewSound('voice', t, customSoundData, voiceGender); }} className={`flex-1 py-3 text-[10px] font-black rounded-xl capitalize border transition-all ${voiceTone === t ? 'bg-white text-teal-700 border-teal-200 shadow-md' : 'text-slate-400 border-transparent hover:text-slate-600'}`}>{t}</button>
-                            ))}
+                    <div className="bg-teal-50/50 p-6 rounded-3xl space-y-5 border border-teal-100 animate-fade-in">
+                        <div className="space-y-3">
+                            <label className="text-[9px] font-black text-teal-600/70 uppercase tracking-widest ml-1">AI Voice Tone</label>
+                            <div className="flex space-x-2">
+                                {(['normal', 'strict', 'friendly', 'hindi'] as VoiceTone[]).map(t => (
+                                    <button key={t} type="button" onClick={() => { setVoiceTone(t); previewSound('voice', t, customSoundData, voiceGender); }} className={`flex-1 py-3 text-[10px] font-black rounded-xl capitalize border transition-all ${voiceTone === t ? 'bg-white text-teal-700 border-teal-200 shadow-md' : 'text-slate-400 border-transparent hover:text-slate-600'}`}>{t}</button>
+                                ))}
+                            </div>
                         </div>
-                        {/* Voice Gender Selection */}
-                        <div className="flex space-x-2">
-                             {(['female', 'male'] as ('male'|'female')[])
-                                .map(g => (
-                                <button key={g} type="button" onClick={() => { setVoiceGender(g); previewSound('voice', voiceTone, customSoundData, g); }} className={`flex-1 py-3 text-[10px] font-black rounded-xl capitalize border transition-all ${voiceGender === g ? 'bg-white text-teal-700 border-teal-200 shadow-md' : 'text-slate-400 border-transparent hover:text-slate-600'}`}>
-                                    {g === 'female' ? 'Female 👩' : 'Male 👨'}
-                                </button>
-                             ))}
+
+                        <div className="space-y-3">
+                            <label className="text-[9px] font-black text-teal-600/70 uppercase tracking-widest ml-1">AI Gender</label>
+                            <div className="flex space-x-2">
+                                {(['female', 'male'] as VoiceGender[]).map(g => (
+                                    <button key={g} type="button" onClick={() => { setVoiceGender(g); previewSound('voice', voiceTone, customSoundData, g); }} className={`flex-1 py-3 text-[10px] font-black rounded-xl capitalize border transition-all ${voiceGender === g ? 'bg-white text-teal-700 border-teal-200 shadow-md' : 'text-slate-400 border-transparent hover:text-slate-600'}`}>
+                                        {g === 'female' ? 'Female 👩' : 'Male 👨'}
+                                    </button>
+                                ))}
+                            </div>
                         </div>
                     </div>
                 )}
