@@ -1,15 +1,13 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
-import { getAnalytics } from "firebase/analytics";
+import { getAnalytics, isSupported } from "firebase/analytics";
 import { getAuth } from "firebase/auth";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDe0N_wOr6GgMRkcfFy1Sxbm7WDsQKFcHc",
-  authDomain: "medscanindia.firebaseapp.com",
-  projectId: "medscanindia",
-  storageBucket: "medscanindia.firebasestorage.app",
-  messagingSenderId: "732032195788",
-  appId: "1:732032195788:web:23105b2d88d74d597fb669",
-  measurementId: "G-0H8L4S3C2M"
+  apiKey: "AIzaSyCiAA2DhF7VLNKDBN5dWVl3ko4OqOoEYtw",
+  authDomain: "gen-lang-client-0861215458.firebaseapp.com",
+  projectId: "gen-lang-client-0861215458",
+  storageBucket: "gen-lang-client-0861215458.firebasestorage.app",
+  appId: "1:1025216173814:web:921a9a9ac1c10b16b5fed7"
 };
 
 // Initialize Firebase only once
@@ -19,9 +17,20 @@ let auth;
 
 try {
     app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-    // Initialize services
-    analytics = getAnalytics(app);
+    
+    // Initialize Auth
     auth = getAuth(app);
+
+    // Initialize Analytics conditionally
+    // isSupported() is async, so analytics export might be undefined initially
+    isSupported().then((supported) => {
+        if (supported) {
+            analytics = getAnalytics(app);
+        }
+    }).catch((err) => {
+        console.warn("Firebase Analytics not supported in this environment:", err);
+    });
+
 } catch (error) {
     console.warn("Firebase initialization failed", error);
 }
