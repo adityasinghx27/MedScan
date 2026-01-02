@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback, useEffect } from 'react';
+import React, { useRef, useState, useCallback } from 'react';
 import { analyzeMedicineImage } from '../services/geminiService';
 import { MedicineData, PatientProfile, AgeGroup, Gender, Language, FamilyMember } from '../types';
 

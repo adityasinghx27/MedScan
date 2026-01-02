@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Scanner from './components/Scanner.tsx';
 import MedicineResult from './components/MedicineResult.tsx';
 import Reminders from './components/Reminders.tsx';
@@ -8,79 +8,145 @@ import PremiumModal from './components/PremiumModal.tsx';
 import Profile from './components/Profile.tsx';
 import LegalAndHelp from './components/LegalAndHelp.tsx';
 import AlarmRingingModal from './components/AlarmRingingModal.tsx';
-import { MedicineData, AppView, Reminder, PatientProfile, ScanHistoryItem, FamilyMember } from './types.ts';
+import IntroFlow from './components/IntroFlow.tsx';
+import LoginScreen from './components/LoginScreen.tsx';
+import { MedicineData, AppView, Reminder, PatientProfile, ScanHistoryItem, FamilyMember, User } from './types.ts';
 import { getHealthTip } from './services/geminiService.ts';
+import { subscribeToAuthChanges, loginWithGoogle, logout } from './services/authService.ts';
 
 const App: React.FC = () => {
+  // -- Auth State --
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isGuest, setIsGuest] = useState<boolean>(() => localStorage.getItem('mediScan_is_guest') === 'true');
+  const [authChecked, setAuthChecked] = useState(false);
+  const [showIntro, setShowIntro] = useState<boolean>(true);
+
+  // -- Data State (Initialized Empty, Loaded via Effect) --
+  const [reminders, setReminders] = useState<Reminder[]>([]);
+  const [scanHistory, setScanHistory] = useState<ScanHistoryItem[]>([]);
+  const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([]);
+  const [isPremium, setIsPremium] = useState<boolean>(false);
+  
+  // -- UI State --
   const [currentView, setCurrentView] = useState<AppView>(AppView.HOME);
   const [scannedData, setScannedData] = useState<MedicineData | null>(null);
   const [patientProfile, setPatientProfile] = useState<PatientProfile | undefined>(undefined);
-  
-  const [isPremium, setIsPremium] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem('mediScan_premium') === 'true';
-    } catch {
-      return false;
-    }
-  });
-  
   const [showPremiumModal, setShowPremiumModal] = useState(false);
-  const [reminders, setReminders] = useState<Reminder[]>([]);
   const [healthTip, setHealthTip] = useState<string>("");
-  const [scanHistory, setScanHistory] = useState<ScanHistoryItem[]>([]);
-  const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([]);
   const [isPreviouslyScanned, setIsPreviouslyScanned] = useState(false);
   const [overdoseWarning, setOverdoseWarning] = useState(false);
   const [activeAlarm, setActiveAlarm] = useState<Reminder | null>(null);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(() => Notification.permission);
-  
-  // -- Initialization --
+  const [isLoadingData, setIsLoadingData] = useState(true);
+
+  // Helper: Generate Storage Key based on User
+  // Guests use legacy keys (no prefix) to preserve existing data.
+  // Logged-in users use `mediScan_UID_` prefix.
+  const getStorageKey = useCallback((baseKey: string) => {
+    if (currentUser) {
+      return `mediScan_${currentUser.uid}_${baseKey}`;
+    }
+    return `mediScan_${baseKey}`;
+  }, [currentUser]);
+
+  // -- Initialization & Auth --
   useEffect(() => {
+    // 1. Check Intro
+    const introSeen = localStorage.getItem('mediScan_intro_seen');
+    if (introSeen) setShowIntro(false);
+
+    // 2. Auth Subscription
+    const unsubscribe = subscribeToAuthChanges((user) => {
+      setCurrentUser(user);
+      setAuthChecked(true);
+      if (user) {
+          setIsGuest(false);
+          localStorage.removeItem('mediScan_is_guest');
+      }
+    });
+
+    // 3. Health Tip & Device ID
     if (!localStorage.getItem('mediScan_deviceId')) {
         localStorage.setItem('mediScan_deviceId', crypto.randomUUID());
     }
-
-    try {
-        const savedReminders = localStorage.getItem('mediScan_reminders');
-        if (savedReminders) setReminders(JSON.parse(savedReminders));
-        
-        const savedHistory = localStorage.getItem('mediScan_history');
-        if (savedHistory) setScanHistory(JSON.parse(savedHistory));
-
-        const savedFamily = localStorage.getItem('mediScan_family');
-        if (savedFamily) setFamilyMembers(JSON.parse(savedFamily));
-        else {
-          const defaultMe: FamilyMember = {
-            id: 'me',
-            name: 'Me',
-            ageGroup: 'adult',
-            gender: 'male',
-            isPregnant: false,
-            isBreastfeeding: false,
-            language: 'english',
-            avatar: '🧑‍💻'
-          };
-          setFamilyMembers([defaultMe]);
-        }
-    } catch (e) {
-        console.error("Failed to load local data", e);
-    }
-
     getHealthTip().then(setHealthTip).catch(() => setHealthTip("Always verify medicine with a doctor."));
-  }, []); 
+
+    return () => unsubscribe();
+  }, []);
+
+  // -- Load Data when User Changes --
+  useEffect(() => {
+    if (!authChecked) return;
+    if (!currentUser && !isGuest) return; // Wait for login choice
+
+    setIsLoadingData(true);
+    
+    // Load Reminders
+    try {
+        const saved = localStorage.getItem(getStorageKey('reminders'));
+        setReminders(saved ? JSON.parse(saved) : []);
+    } catch { setReminders([]); }
+
+    // Load History
+    try {
+        const saved = localStorage.getItem(getStorageKey('history'));
+        setScanHistory(saved ? JSON.parse(saved) : []);
+    } catch { setScanHistory([]); }
+
+    // Load Family
+    try {
+        const saved = localStorage.getItem(getStorageKey('family'));
+        if (saved) {
+            setFamilyMembers(JSON.parse(saved));
+        } else {
+            // Default Profile
+            const defaultMe: FamilyMember = {
+                id: 'me',
+                name: currentUser?.displayName || 'Me',
+                ageGroup: 'adult',
+                gender: 'male',
+                isPregnant: false,
+                isBreastfeeding: false,
+                language: 'english',
+                avatar: currentUser?.photoURL ? '📸' : '🧑‍💻'
+            };
+            setFamilyMembers([defaultMe]);
+        }
+    } catch { setFamilyMembers([]); }
+
+    // Load Premium
+    try {
+        const saved = localStorage.getItem(getStorageKey('premium'));
+        setIsPremium(saved === 'true');
+    } catch { setIsPremium(false); }
+
+    setIsLoadingData(false);
+
+  }, [currentUser, isGuest, authChecked, getStorageKey]);
+
+  // -- Save Data Effects (Triggered on State Change) --
+  useEffect(() => {
+    if (isLoadingData) return;
+    localStorage.setItem(getStorageKey('reminders'), JSON.stringify(reminders));
+  }, [reminders, getStorageKey, isLoadingData]);
 
   useEffect(() => {
-    localStorage.setItem('mediScan_reminders', JSON.stringify(reminders));
-  }, [reminders]);
+    if (isLoadingData) return;
+    localStorage.setItem(getStorageKey('history'), JSON.stringify(scanHistory));
+  }, [scanHistory, getStorageKey, isLoadingData]);
 
   useEffect(() => {
-    localStorage.setItem('mediScan_history', JSON.stringify(scanHistory));
-  }, [scanHistory]);
+    if (isLoadingData) return;
+    localStorage.setItem(getStorageKey('family'), JSON.stringify(familyMembers));
+  }, [familyMembers, getStorageKey, isLoadingData]);
 
   useEffect(() => {
-    localStorage.setItem('mediScan_family', JSON.stringify(familyMembers));
-  }, [familyMembers]);
+    if (isLoadingData) return;
+    localStorage.setItem(getStorageKey('premium'), String(isPremium));
+  }, [isPremium, getStorageKey, isLoadingData]);
 
+
+  // -- Alarm Checker --
   useEffect(() => {
     const interval = setInterval(() => {
         const now = new Date();
@@ -95,6 +161,8 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, [reminders, activeAlarm]);
 
+  // -- Handlers --
+
   const requestNotificationPermission = async () => {
     if (Notification.permission === 'default') {
       const permission = await Notification.requestPermission();
@@ -104,15 +172,41 @@ const App: React.FC = () => {
 
   const handleUpgrade = async (txnId?: string) => {
     setIsPremium(true);
-    localStorage.setItem('mediScan_premium', 'true');
-    if (txnId) localStorage.setItem('mediScan_txnId', txnId);
+    if (txnId) localStorage.setItem(getStorageKey('txnId'), txnId);
     setShowPremiumModal(false);
     setCurrentView(AppView.PROFILE);
+  };
+
+  const handleLogin = async () => {
+    try {
+        await loginWithGoogle();
+        // State reset handled by auth subscription + data loading effect
+    } catch (error) {
+        alert("Login failed. Please try again.");
+    }
+  };
+
+  const handleGuestContinue = () => {
+      setIsGuest(true);
+      localStorage.setItem('mediScan_is_guest', 'true');
+  };
+
+  const handleLogout = async () => {
+    try {
+        await logout();
+        setIsGuest(false);
+        setScannedData(null);
+        setCurrentView(AppView.HOME);
+        localStorage.removeItem('mediScan_is_guest');
+    } catch (error) {
+        console.error("Logout failed", error);
+    }
   };
 
   const addReminder = (r: Reminder) => setReminders(prev => [...prev, r]);
   const deleteReminder = (id: string) => setReminders(prev => prev.filter(r => r.id !== id));
   const toggleReminder = (id: string) => setReminders(prev => prev.map(r => r.id === id ? { ...r, active: !r.active } : r));
+  const updateReminder = (updated: Reminder) => setReminders(prev => prev.map(r => r.id === updated.id ? updated : r));
   
   const handleScanComplete = (data: MedicineData, profile: PatientProfile) => {
     const now = Date.now();
@@ -128,6 +222,25 @@ const App: React.FC = () => {
     setScannedData(data);
     setPatientProfile(profile);
   };
+
+  const handleIntroComplete = () => {
+    localStorage.setItem('mediScan_intro_seen', 'true');
+    setShowIntro(false);
+  };
+
+  // -- Render Flow --
+
+  if (showIntro) {
+    return <IntroFlow onComplete={handleIntroComplete} />;
+  }
+
+  // Show Login Screen if:
+  // 1. Auth check is done
+  // 2. No user logged in
+  // 3. Not in guest mode
+  if (authChecked && !currentUser && !isGuest) {
+      return <LoginScreen onLogin={handleLogin} onGuest={handleGuestContinue} />;
+  }
 
   const renderContent = () => {
     if (scannedData) {
@@ -195,11 +308,11 @@ const App: React.FC = () => {
           </div>
         );
       case AppView.REMINDERS:
-        return <div className="pb-24 bg-slate-50 min-h-screen"><Reminders reminders={reminders} addReminder={addReminder} deleteReminder={deleteReminder} toggleReminder={toggleReminder} notificationPermission={notificationPermission} onRequestNotificationPermission={requestNotificationPermission} /></div>;
+        return <div className="pb-24 bg-slate-50 min-h-screen"><Reminders reminders={reminders} addReminder={addReminder} updateReminder={updateReminder} deleteReminder={deleteReminder} toggleReminder={toggleReminder} notificationPermission={notificationPermission} onRequestNotificationPermission={requestNotificationPermission} /></div>;
       case AppView.HISTORY:
         return <div className="pb-24 bg-slate-50 min-h-screen"><History history={scanHistory} onSelectItem={(data) => { setScannedData(data); setOverdoseWarning(false); setIsPreviouslyScanned(true); }} onClearHistory={() => setScanHistory([])} /></div>;
       case AppView.DOCTOR_AI:
-        return <DoctorAI isPremium={isPremium} onOpenPremium={() => setShowPremiumModal(true)} />;
+        return <DoctorAI isPremium={isPremium} onOpenPremium={() => setShowPremiumModal(true)} userId={currentUser?.uid || 'guest'} />;
       case AppView.INFO:
           return <div className="pb-24 bg-slate-50 min-h-screen"><LegalAndHelp /></div>;
       case AppView.PROFILE:
@@ -209,6 +322,9 @@ const App: React.FC = () => {
                 isPremium={isPremium} 
                 familyMembers={familyMembers} 
                 setFamilyMembers={setFamilyMembers} 
+                user={currentUser}
+                onLogin={handleLogin}
+                onLogout={handleLogout}
               />
             </div>
           );

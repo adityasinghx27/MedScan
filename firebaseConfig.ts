@@ -1,5 +1,6 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAnalytics } from "firebase/analytics";
+import { getAuth } from "firebase/auth";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDe0N_wOr6GgMRkcfFy1Sxbm7WDsQKFcHc",
@@ -14,14 +15,16 @@ const firebaseConfig = {
 // Initialize Firebase only once
 let app;
 let analytics;
+let auth;
 
 try {
     app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
     // Initialize services
     analytics = getAnalytics(app);
+    auth = getAuth(app);
 } catch (error) {
     console.warn("Firebase initialization failed", error);
 }
 
-export { analytics };
+export { analytics, auth };
 export default app;

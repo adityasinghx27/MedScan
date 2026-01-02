@@ -17,6 +17,8 @@ export interface FamilyMember {
 export interface User {
   uid: string;
   email: string | null;
+  displayName?: string | null;
+  photoURL?: string | null;
   isGuest: boolean;
   joinedAt: number;
 }

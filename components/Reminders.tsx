@@ -4,14 +4,17 @@ import { Reminder, FoodContext, RepeatType, SoundType, VoiceTone, VoiceGender } 
 interface RemindersProps {
   reminders: Reminder[];
   addReminder: (r: Reminder) => void;
+  updateReminder: (r: Reminder) => void;
   deleteReminder: (id: string) => void;
   toggleReminder: (id: string) => void;
   notificationPermission: NotificationPermission;
   onRequestNotificationPermission: () => void;
 }
 
-const Reminders: React.FC<RemindersProps> = ({ reminders, addReminder, deleteReminder, toggleReminder, notificationPermission, onRequestNotificationPermission }) => {
+const Reminders: React.FC<RemindersProps> = ({ reminders, addReminder, updateReminder, deleteReminder, toggleReminder, notificationPermission, onRequestNotificationPermission }) => {
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  
   const [name, setName] = useState('');
   const [dose, setDose] = useState('');
   const [time, setTime] = useState('');
@@ -173,11 +176,34 @@ const Reminders: React.FC<RemindersProps> = ({ reminders, addReminder, deleteRem
     }
   };
 
+  const handleEdit = (r: Reminder) => {
+      setName(r.medicineName);
+      setDose(r.dose);
+      setTime(r.time);
+      setFoodContext(r.foodContext);
+      setRepeat(r.repeat);
+      setSoundType(r.soundType);
+      setVoiceTone(r.voiceTone || 'normal');
+      setVoiceGender(r.voiceGender || 'female');
+      setCustomSoundData(r.customSoundData);
+      setEditingId(r.id);
+      setShowForm(true);
+  };
+
+  const resetForm = () => {
+      setName(''); setDose(''); setTime(''); setCustomSoundData(undefined); setEditingId(null);
+      setSoundType('ringtone'); 
+      setVoiceTone('normal');
+      setVoiceGender('female');
+      setFoodContext('after_food');
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !time || !dose) return;
-    addReminder({ 
-        id: Date.now().toString(), 
+    
+    const reminderData: Reminder = { 
+        id: editingId || Date.now().toString(), 
         medicineName: name, 
         dose, 
         time, 
@@ -190,9 +216,22 @@ const Reminders: React.FC<RemindersProps> = ({ reminders, addReminder, deleteRem
         voiceGender: soundType === 'voice' ? voiceGender : undefined,
         active: true, 
         snoozedUntil: null, 
-        createdAt: Date.now() 
-    });
-    setShowForm(false); setName(''); setDose(''); setTime(''); setCustomSoundData(undefined);
+        createdAt: editingId ? (reminders.find(r => r.id === editingId)?.createdAt || Date.now()) : Date.now()
+    };
+
+    if (editingId) {
+        updateReminder(reminderData);
+    } else {
+        addReminder(reminderData);
+    }
+    
+    setShowForm(false); 
+    resetForm();
+  };
+
+  const cancelEdit = () => {
+      setShowForm(false);
+      resetForm();
   };
 
   return (
@@ -202,7 +241,7 @@ const Reminders: React.FC<RemindersProps> = ({ reminders, addReminder, deleteRem
             <h2 className="text-4xl font-extrabold text-slate-900 tracking-tighter">My Alarms</h2>
             <p className="text-teal-600 text-[10px] font-black uppercase tracking-[0.4em] mt-2 opacity-60">Precision Schedule</p>
         </div>
-        <button onClick={() => setShowForm(!showForm)} className="bg-slate-900 text-white w-14 h-14 rounded-3xl shadow-2xl flex items-center justify-center hover:scale-110 active:scale-90 transition-all border border-slate-700">
+        <button onClick={() => { resetForm(); setShowForm(!showForm); }} className="bg-slate-900 text-white w-14 h-14 rounded-3xl shadow-2xl flex items-center justify-center hover:scale-110 active:scale-90 transition-all border border-slate-700">
             <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 4v16m8-8H4" /></svg>
         </button>
       </div>
@@ -224,7 +263,7 @@ const Reminders: React.FC<RemindersProps> = ({ reminders, addReminder, deleteRem
         <form onSubmit={handleSubmit} className="bg-white p-8 rounded-[3.5rem] shadow-2xl border border-slate-100 mb-12 space-y-10 animate-slide-up relative z-[110]">
             <h3 className="text-xl font-black text-slate-900 flex items-center tracking-tight">
                 <span className="w-3 h-3 bg-teal-500 rounded-full mr-4 shadow-teal-200 shadow-lg"></span> 
-                New Schedule
+                {editingId ? 'Edit Schedule' : 'New Schedule'}
             </h3>
             
             <input type="file" ref={fileInputRef} onChange={handleFileChange} accept="audio/*" className="hidden" />
@@ -291,8 +330,10 @@ const Reminders: React.FC<RemindersProps> = ({ reminders, addReminder, deleteRem
             </div>
 
             <div className="pt-6 flex space-x-4">
-                <button type="button" onClick={() => setShowForm(false)} className="flex-1 bg-slate-100 text-slate-500 py-6 rounded-[2.5rem] font-black text-[11px] uppercase tracking-widest hover:bg-slate-200 transition-colors">Dismiss</button>
-                <button type="submit" className="flex-[2] bg-teal-600 text-white py-6 rounded-[2.5rem] font-black text-sm uppercase tracking-widest shadow-2xl shadow-teal-600/30 hover:translate-y-[-2px] active:scale-95 transition-all">Enable Alarm</button>
+                <button type="button" onClick={cancelEdit} className="flex-1 bg-slate-100 text-slate-500 py-6 rounded-[2.5rem] font-black text-[11px] uppercase tracking-widest hover:bg-slate-200 transition-colors">Cancel</button>
+                <button type="submit" className="flex-[2] bg-teal-600 text-white py-6 rounded-[2.5rem] font-black text-sm uppercase tracking-widest shadow-2xl shadow-teal-600/30 hover:translate-y-[-2px] active:scale-95 transition-all">
+                    {editingId ? 'Update Alarm' : 'Enable Alarm'}
+                </button>
             </div>
         </form>
       )}
@@ -317,12 +358,18 @@ const Reminders: React.FC<RemindersProps> = ({ reminders, addReminder, deleteRem
                                 </div>
                             </div>
                         </div>
-                        <div className="flex flex-col space-y-4">
+                        <div className="flex flex-col space-y-3">
                             <button onClick={() => toggleReminder(rem.id)} className={`w-14 h-7 rounded-full p-1.5 transition-all duration-500 shadow-inner ${rem.active ? 'bg-teal-500' : 'bg-slate-300'}`}>
                                 <div className={`bg-white w-4 h-4 rounded-full shadow-2xl transform transition-transform duration-500 ${rem.active ? 'translate-x-7' : ''}`}></div>
                             </button>
+                            
+                            {/* Edit Button */}
+                            <button onClick={() => handleEdit(rem)} className="w-14 h-10 rounded-2xl bg-indigo-50 text-indigo-400 flex items-center justify-center hover:bg-indigo-500 hover:text-white transition-all active:scale-90 border border-indigo-100/50">
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                            </button>
+
                             <button onClick={() => deleteReminder(rem.id)} className="w-14 h-10 rounded-2xl bg-rose-50 text-rose-300 flex items-center justify-center hover:bg-rose-500 hover:text-white transition-all active:scale-90 border border-rose-100/50">
-                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                             </button>
                         </div>
                     </div>

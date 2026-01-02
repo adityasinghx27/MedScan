@@ -5,12 +5,17 @@ import { getDoctorAIResponse } from '../services/geminiService.ts';
 interface DoctorAIProps {
   isPremium: boolean;
   onOpenPremium: () => void;
+  userId: string;
 }
 
-const DoctorAI: React.FC<DoctorAIProps> = ({ isPremium, onOpenPremium }) => {
+const DoctorAI: React.FC<DoctorAIProps> = ({ isPremium, onOpenPremium, userId }) => {
+  // Helper to get scoped keys
+  const getChatKey = () => userId === 'guest' ? 'mediScan_chat_history' : `mediScan_${userId}_chat_history`;
+  const getUsageKey = () => userId === 'guest' ? 'mediScan_daily_chat_usage' : `mediScan_${userId}_daily_chat_usage`;
+
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     try {
-      const saved = localStorage.getItem('mediScan_chat_history');
+      const saved = localStorage.getItem(getChatKey());
       if (saved) return JSON.parse(saved);
     } catch (e) {
       console.error("Failed to load chat history", e);
@@ -29,7 +34,7 @@ const DoctorAI: React.FC<DoctorAIProps> = ({ isPremium, onOpenPremium }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [usage, setUsage] = useState(() => {
     const today = new Date().toISOString().split('T')[0];
-    const saved = localStorage.getItem('mediScan_daily_chat_usage');
+    const saved = localStorage.getItem(getUsageKey());
     if (saved) {
       const parsed = JSON.parse(saved);
       if (parsed.date === today) return parsed.count;
@@ -37,19 +42,46 @@ const DoctorAI: React.FC<DoctorAIProps> = ({ isPremium, onOpenPremium }) => {
     return 0;
   });
 
+  // Reload history when User ID changes (e.g. login/logout)
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(getChatKey());
+      if (saved) {
+        setMessages(JSON.parse(saved));
+      } else {
+        // Reset to welcome if no history found for this user
+        setMessages([{
+          id: 'welcome',
+          role: 'assistant' as const,
+          content: 'Hello! I am your MedScan Doctor AI. How can I help you today? Please remember, I am an AI, not a human doctor.',
+          timestamp: Date.now()
+        }]);
+      }
+      
+      const today = new Date().toISOString().split('T')[0];
+      const savedUsage = localStorage.getItem(getUsageKey());
+      if (savedUsage) {
+          const parsed = JSON.parse(savedUsage);
+          setUsage(parsed.date === today ? parsed.count : 0);
+      } else {
+          setUsage(0);
+      }
+    } catch(e) { console.error(e); }
+  }, [userId]);
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const MAX_FREE_MESSAGES = 10;
   const isLimitReached = !isPremium && usage >= MAX_FREE_MESSAGES;
 
   useEffect(() => {
-    localStorage.setItem('mediScan_chat_history', JSON.stringify(messages));
+    localStorage.setItem(getChatKey(), JSON.stringify(messages));
     scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, userId]);
 
   useEffect(() => {
     const today = new Date().toISOString().split('T')[0];
-    localStorage.setItem('mediScan_daily_chat_usage', JSON.stringify({ date: today, count: usage }));
-  }, [usage]);
+    localStorage.setItem(getUsageKey(), JSON.stringify({ date: today, count: usage }));
+  }, [usage, userId]);
 
   const handleSend = async (text: string) => {
     if (!text.trim() || isLoading || isLimitReached) return;
@@ -91,7 +123,7 @@ const DoctorAI: React.FC<DoctorAIProps> = ({ isPremium, onOpenPremium }) => {
         timestamp: Date.now()
       };
       setMessages([welcome]);
-      localStorage.removeItem('mediScan_chat_history');
+      localStorage.removeItem(getChatKey());
     }
   };
 
