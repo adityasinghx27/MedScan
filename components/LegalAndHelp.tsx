@@ -8,8 +8,8 @@ const LegalAndHelp: React.FC = () => {
 
   const handleShare = async () => {
       const shareData = {
-          title: 'MedScan AI',
-          text: 'Help your family take medicines on time ❤️. Identify medicines and set voice reminders with MedScan AI.',
+          title: 'MediIQ AI',
+          text: 'Help your family take medicines on time ❤️. Identify medicines and set voice reminders with MediIQ AI.',
           url: window.location.href
       };
       try {
@@ -82,7 +82,7 @@ const LegalAndHelp: React.FC = () => {
           {activeTab === 'TERMS' && (
               <div className="text-xs text-gray-600 space-y-3 leading-relaxed">
                   <h4 className="font-bold text-gray-900">Terms of Service</h4>
-                  <p><strong>1. Disclaimer:</strong> MedScan AI provides information for educational purposes only. It is not a substitute for professional medical advice, diagnosis, or treatment.</p>
+                  <p><strong>1. Disclaimer:</strong> MediIQ AI provides information for educational purposes only. It is not a substitute for professional medical advice, diagnosis, or treatment.</p>
                   <p><strong>2. Accuracy:</strong> While we strive for accuracy, medicine packaging varies. The developers are not liable for any errors or misuse of medication.</p>
                   <p><strong>3. Emergency:</strong> In case of a medical emergency, call your local emergency number immediately.</p>
               </div>
@@ -91,7 +91,7 @@ const LegalAndHelp: React.FC = () => {
 
       <div className="mt-8 text-center">
           <p className="text-[10px] text-gray-400">
-              MedScan AI v1.0.1 <br/>
+              MediIQ AI v1.0.1 <br/>
               Made with ❤️ for safety.
           </p>
       </div>

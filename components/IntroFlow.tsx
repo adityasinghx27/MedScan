@@ -12,8 +12,8 @@ const IntroFlow: React.FC<IntroFlowProps> = ({ onComplete }) => {
   
   const slides = [
     {
-      title: "Welcome to MedScan",
-      text: "MedScan helps you understand medicines safely using AI. Scan medicines, check side effects, and get clear information instantly.",
+      title: "Welcome to MediIQ",
+      text: "MediIQ helps you understand medicines safely using AI. Scan medicines, check side effects, and get clear information instantly.",
       icon: (
         <div className="relative">
              <div className="w-36 h-36 bg-gradient-to-br from-teal-400 to-emerald-600 rounded-[2.5rem] flex items-center justify-center shadow-2xl shadow-teal-500/30 relative z-10">

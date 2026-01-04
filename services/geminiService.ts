@@ -109,7 +109,7 @@ export const analyzeMedicineImage = async (base64Images: string[], profile: Pati
         config: {
             responseMimeType: "application/json",
             responseSchema: MEDICINE_SCHEMA,
-            systemInstruction: "You are MedScan AI. Provide professional, accurate medicine analysis. When multiple images are provided, analyze the combined safety of all medications identified."
+            systemInstruction: "You are MediIQ AI. Provide professional, accurate medicine analysis. When multiple images are provided, analyze the combined safety of all medications identified."
         }
         });
 
@@ -164,7 +164,7 @@ export const getDoctorAIResponse = async (history: ChatMessage[]): Promise<strin
             model: "gemini-3-pro-preview",
             contents: contents,
             config: {
-                systemInstruction: "You are 'MedScan Doctor AI', a professional and empathetic medical assistant. Help users understand symptoms, health conditions, and wellness. ALWAYS include a disclaimer that you are an AI and not a real doctor. If symptoms sound severe, strongly advise visiting an Emergency Room immediately. Keep responses concise and structured with bullet points where appropriate."
+                systemInstruction: "You are 'MediIQ Doctor AI', a professional and empathetic medical assistant. Help users understand symptoms, health conditions, and wellness. ALWAYS include a disclaimer that you are an AI and not a real doctor. If symptoms sound severe, strongly advise visiting an Emergency Room immediately. Keep responses concise and structured with bullet points where appropriate."
             }
         });
         return response.text || "I apologize, I'm having trouble processing that right now.";
@@ -181,7 +181,7 @@ export const getDoctorAIResponse = async (history: ChatMessage[]): Promise<strin
                 model: "gemini-3-flash-preview",
                 contents: contents,
                 config: {
-                    systemInstruction: "You are 'MedScan Doctor AI'. Be concise and helpful. Disclaimer: I am an AI, not a doctor."
+                    systemInstruction: "You are 'MediIQ Doctor AI'. Be concise and helpful. Disclaimer: I am an AI, not a doctor."
                 }
             });
             return response.text || "I'm currently unable to assist. Please try again later.";

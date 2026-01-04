@@ -12,7 +12,7 @@ import IntroFlow from './components/IntroFlow.tsx';
 import LoginScreen from './components/LoginScreen.tsx';
 import { MedicineData, AppView, Reminder, PatientProfile, ScanHistoryItem, FamilyMember, User } from './types.ts';
 import { getHealthTip } from './services/geminiService.ts';
-import { subscribeToAuthChanges, loginWithGoogle, logout } from './services/authService.ts';
+import { subscribeToAuthChanges, loginWithGoogle, logout, handleRedirectResult } from './services/authService.ts';
 
 const App: React.FC = () => {
   // -- Auth State --
@@ -55,7 +55,13 @@ const App: React.FC = () => {
     const introSeen = localStorage.getItem('mediScan_intro_seen');
     if (introSeen) setShowIntro(false);
 
-    // 2. Auth Subscription
+    // 2. Handle Redirect Result (Important for Mobile Login)
+    handleRedirectResult().catch((error) => {
+        console.error("Redirect Error:", error);
+        // Errors are usually handled by the auth state listener, but specific redirect errors can be logged here
+    });
+
+    // 3. Auth Subscription
     const unsubscribe = subscribeToAuthChanges((user) => {
       setCurrentUser(user);
       setAuthChecked(true);
@@ -65,7 +71,7 @@ const App: React.FC = () => {
       }
     });
 
-    // 3. Health Tip & Device ID
+    // 4. Health Tip & Device ID
     if (!localStorage.getItem('mediScan_deviceId')) {
         localStorage.setItem('mediScan_deviceId', crypto.randomUUID());
     }
@@ -182,7 +188,8 @@ const App: React.FC = () => {
         await loginWithGoogle();
         // State reset handled by auth subscription + data loading effect
     } catch (error) {
-        alert("Login failed. Please try again.");
+        // With redirect, this catch might not trigger for webview issues, but handleRedirectResult will log it
+        alert("Login initiation failed. Please try again.");
     }
   };
 
@@ -270,7 +277,7 @@ const App: React.FC = () => {
             <header className="sticky top-0 z-50 bg-slate-50 px-6 pt-10 pb-4 flex justify-between items-center shadow-sm border-b border-slate-100/50">
                <div className="group cursor-default">
                    <div className="flex items-center space-x-2.5">
-                       <h1 className="text-4xl font-extrabold tracking-tighter bg-gradient-to-br from-slate-900 via-teal-800 to-slate-800 bg-clip-text text-transparent">MedScan</h1>
+                       <h1 className="text-4xl font-extrabold tracking-tighter bg-gradient-to-br from-slate-900 via-teal-800 to-slate-800 bg-clip-text text-transparent">MediIQ</h1>
                        <div className="w-2.5 h-2.5 bg-rose-500 rounded-full animate-heartbeat shadow-[0_0_12px_rgba(244,63,94,0.6)]"></div>
                    </div>
                    <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-slate-400 ml-0.5 mt-1.5 opacity-60">AI Health Companion</p>

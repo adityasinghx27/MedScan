@@ -10,8 +10,8 @@ interface DoctorAIProps {
 
 const DoctorAI: React.FC<DoctorAIProps> = ({ isPremium, onOpenPremium, userId }) => {
   // Helper to get scoped keys
-  const getChatKey = () => userId === 'guest' ? 'mediScan_chat_history' : `mediScan_${userId}_chat_history`;
-  const getUsageKey = () => userId === 'guest' ? 'mediScan_daily_chat_usage' : `mediScan_${userId}_daily_chat_usage`;
+  const getChatKey = () => userId === 'guest' ? 'mediIQ_chat_history' : `mediIQ_${userId}_chat_history`;
+  const getUsageKey = () => userId === 'guest' ? 'mediIQ_daily_chat_usage' : `mediIQ_${userId}_daily_chat_usage`;
 
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     try {
@@ -24,7 +24,7 @@ const DoctorAI: React.FC<DoctorAIProps> = ({ isPremium, onOpenPremium, userId })
       {
         id: 'welcome',
         role: 'assistant' as const,
-        content: 'Hello! I am your MedScan Doctor AI. How can I help you today? Please remember, I am an AI, not a human doctor.',
+        content: 'Hello! I am your MediIQ Doctor AI. How can I help you today? Please remember, I am an AI, not a human doctor.',
         timestamp: Date.now()
       }
     ];
@@ -53,7 +53,7 @@ const DoctorAI: React.FC<DoctorAIProps> = ({ isPremium, onOpenPremium, userId })
         setMessages([{
           id: 'welcome',
           role: 'assistant' as const,
-          content: 'Hello! I am your MedScan Doctor AI. How can I help you today? Please remember, I am an AI, not a human doctor.',
+          content: 'Hello! I am your MediIQ Doctor AI. How can I help you today? Please remember, I am an AI, not a human doctor.',
           timestamp: Date.now()
         }]);
       }
@@ -119,7 +119,7 @@ const DoctorAI: React.FC<DoctorAIProps> = ({ isPremium, onOpenPremium, userId })
       const welcome: ChatMessage = {
         id: 'welcome',
         role: 'assistant' as const,
-        content: 'Hello! I am your MedScan Doctor AI. How can I help you today? Please remember, I am an AI, not a human doctor.',
+        content: 'Hello! I am your MediIQ Doctor AI. How can I help you today? Please remember, I am an AI, not a human doctor.',
         timestamp: Date.now()
       };
       setMessages([welcome]);

@@ -20,7 +20,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onGuest }) => {
         </div>
 
         <div className="text-center space-y-3 mb-12">
-            <h1 className="text-4xl font-extrabold text-slate-900 tracking-tighter">MedScan</h1>
+            <h1 className="text-4xl font-extrabold text-slate-900 tracking-tighter">MediIQ</h1>
             <p className="text-slate-500 font-medium text-sm max-w-[240px] mx-auto leading-relaxed">
                 Your personal AI pharmacist for safe and smart medication.
             </p>

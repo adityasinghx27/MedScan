@@ -31,7 +31,7 @@ const PremiumModal: React.FC<PremiumModalProps> = ({ isOpen, onClose, onUpgrade 
   if (!isOpen) return null;
 
   const handlePayNow = () => {
-    window.location.href = "upi://pay?pa=7542076420@fam&pn=MedScanAI&am=99.00&cu=INR";
+    window.location.href = "upi://pay?pa=7542076420@fam&pn=MediIQAI&am=99.00&cu=INR";
   };
 
   const verifyPayment = () => {
@@ -85,7 +85,7 @@ const PremiumModal: React.FC<PremiumModalProps> = ({ isOpen, onClose, onUpgrade 
                             <span className="text-4xl drop-shadow-md">👑</span>
                         </div>
                         <div>
-                            <h2 className="text-3xl font-extrabold text-white mb-2 tracking-tight">MedScan Premium</h2>
+                            <h2 className="text-3xl font-extrabold text-white mb-2 tracking-tight">MediIQ Premium</h2>
                             <p className="text-slate-400 text-sm font-medium">Lifetime protection for your family.</p>
                         </div>
 

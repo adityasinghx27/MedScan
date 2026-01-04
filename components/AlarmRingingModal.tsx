@@ -17,7 +17,7 @@ const AlarmRingingModal: React.FC<AlarmRingingModalProps> = ({ reminder, onTake,
   const gainNodeRef = useRef<GainNode | null>(null); // Dedicated gain node for tone volume control
   const intervalRef = useRef<number | null>(null);
   const customAudioRef = useRef<HTMLAudioElement | null>(null);
-  const notificationTagRef = useRef<string>(`medscan-alarm-${reminder.id}`); // Unique tag for notification
+  const notificationTagRef = useRef<string>(`mediIQ-alarm-${reminder.id}`); // Unique tag for notification
 
   // Vibrate on alarm
   useEffect(() => {

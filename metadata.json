@@ -1,5 +1,5 @@
 {
-  "name": "MedScan",
+  "name": "MediIQ",
   "description": "Scan medicines and prescriptions to get instant AI details, set intake reminders, and unlock premium safety insights.",
   "requestFramePermissions": [
     "camera"

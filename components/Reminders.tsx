@@ -251,7 +251,7 @@ const Reminders: React.FC<RemindersProps> = ({ reminders, addReminder, updateRem
           <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-xl shrink-0">🔔</div>
           <div>
             <p className="font-bold mb-2">Enable Notifications</p>
-            <p className="text-xs">Allow MedScan to send alerts even when the app is in the background for reliable alarms.</p>
+            <p className="text-xs">Allow MediIQ to send alerts even when the app is in the background for reliable alarms.</p>
             <button onClick={onRequestNotificationPermission} className="mt-3 bg-blue-500 text-white text-xs font-bold px-4 py-2 rounded-xl hover:bg-blue-600 transition-colors active:scale-95">
               Allow Notifications
             </button>

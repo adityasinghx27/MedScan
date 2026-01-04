@@ -1,31 +1,32 @@
 import { auth } from "../firebaseConfig.ts";
 import { 
   GoogleAuthProvider, 
-  signInWithPopup, 
+  signInWithRedirect, 
+  getRedirectResult,
   signOut, 
   onAuthStateChanged, 
   User as FirebaseUser 
 } from "firebase/auth";
 import { User } from "../types.ts";
 
-export const loginWithGoogle = async (): Promise<User> => {
+export const loginWithGoogle = async (): Promise<void> => {
   if (!auth) throw new Error("Auth not initialized");
   const provider = new GoogleAuthProvider();
   
   try {
-    const result = await signInWithPopup(auth, provider);
-    const user = result.user;
-    
-    return {
-      uid: user.uid,
-      email: user.email,
-      displayName: user.displayName,
-      photoURL: user.photoURL,
-      isGuest: false,
-      joinedAt: Date.now()
-    };
+    await signInWithRedirect(auth, provider);
   } catch (error) {
-    console.error("Login failed", error);
+    console.error("Login redirect failed", error);
+    throw error;
+  }
+};
+
+export const handleRedirectResult = async (): Promise<void> => {
+  if (!auth) return;
+  try {
+    await getRedirectResult(auth);
+  } catch (error) {
+    console.error("Redirect login failed", error);
     throw error;
   }
 };
@@ -45,7 +46,7 @@ export const subscribeToAuthChanges = (callback: (user: User | null) => void) =>
         displayName: firebaseUser.displayName,
         photoURL: firebaseUser.photoURL,
         isGuest: false,
-        joinedAt: Date.now() // Ideally fetch from DB, simplified for now
+        joinedAt: Date.now() 
       });
     } else {
       callback(null);
