@@ -4,7 +4,7 @@ import { getAnalytics, isSupported } from "firebase/analytics";
 
 // ⚠️ Yahan humne seedha API Key likh di hai taaki Vercel par error na aaye
 const firebaseConfig = {
-  apiKey: "AIzaSyAHCZMb8sg-txCjVoKKtShC714J_gr6_tA",
+  apiKey: "AIzaSyDdFnW3d4kKyauhldopnkyT9j5TL25zM7c",
   authDomain: "gen-lang-client-0861215458.firebaseapp.com",
   projectId: "gen-lang-client-0861215458",
   storageBucket: "gen-lang-client-0861215458.firebasestorage.app",
