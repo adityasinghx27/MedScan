@@ -1,6 +1,5 @@
-import { auth } from "../firebaseConfig.ts";
+import { auth, googleProvider } from "../firebaseConfig.ts";
 import { 
-  GoogleAuthProvider, 
   signInWithRedirect, 
   getRedirectResult,
   signOut, 
@@ -11,12 +10,12 @@ import { User } from "../types.ts";
 
 export const loginWithGoogle = async (): Promise<void> => {
   if (!auth) throw new Error("Auth not initialized");
-  const provider = new GoogleAuthProvider();
   
   try {
-    await signInWithRedirect(auth, provider);
-  } catch (error) {
+    await signInWithRedirect(auth, googleProvider);
+  } catch (error: any) {
     console.error("Login redirect failed", error);
+    alert(error.message);
     throw error;
   }
 };
@@ -25,8 +24,9 @@ export const handleRedirectResult = async (): Promise<void> => {
   if (!auth) return;
   try {
     await getRedirectResult(auth);
-  } catch (error) {
+  } catch (error: any) {
     console.error("Redirect login failed", error);
+    alert(error.message);
     throw error;
   }
 };
