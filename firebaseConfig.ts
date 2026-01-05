@@ -1,3 +1,4 @@
+
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
 import { getAnalytics, isSupported } from "firebase/analytics";
@@ -12,19 +13,36 @@ const firebaseConfig = {
   measurementId: "G-32RB4YLOMR"
 };
 
-// 🛡️ CRASH FIX: Check if App is already initialized
-// Ye line check karegi ki Firebase pehle se chal rha hai ya nahi.
-// Agar chal rha hai to naya nahi banayegi (Error se bachaegi).
-const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+// 🛡️ RAMBAAN FIX FOR AI STUDIO PREVIEW
+// Hum App aur Auth ko 'window' (global memory) me save karenge.
+// Isse Hot-Reload hone par bhi app crash nahi hoga.
 
-const auth = getAuth(app);
+let app;
+let auth;
+const win = typeof window !== "undefined" ? (window as any) : undefined;
+
+if (win && win.firebaseApp) {
+  // Agar pehle se memory me hai, to wahi use karo
+  app = win.firebaseApp;
+} else {
+  // Nahi to naya banao aur memory me save kar lo
+  app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+  if (win) win.firebaseApp = app;
+}
+
+if (win && win.firebaseAuth) {
+  auth = win.firebaseAuth;
+} else {
+  auth = getAuth(app);
+  if (win) win.firebaseAuth = auth;
+}
+
 const googleProvider = new GoogleAuthProvider();
 
-// Analytics ko safe tarike se start karna
+// Analytics safe init
 let analytics;
 isSupported().then(supported => {
   if (supported) analytics = getAnalytics(app);
 }).catch(() => {});
 
 export { app, auth, googleProvider, analytics };
-
