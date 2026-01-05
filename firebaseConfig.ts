@@ -1,8 +1,7 @@
-import { initializeApp } from "firebase/app";
+import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
 import { getAnalytics, isSupported } from "firebase/analytics";
 
-// ⚠️ Yahan humne seedha API Key likh di hai taaki Vercel par error na aaye
 const firebaseConfig = {
   apiKey: "AIzaSyDdFnW3d4kKyauhldopnkyT9j5TL25zM7c",
   authDomain: "gen-lang-client-0861215458.firebaseapp.com",
@@ -13,14 +12,19 @@ const firebaseConfig = {
   measurementId: "G-32RB4YLOMR"
 };
 
-const app = initializeApp(firebaseConfig);
+// 🛡️ CRASH FIX: Check if App is already initialized
+// Ye line check karegi ki Firebase pehle se chal rha hai ya nahi.
+// Agar chal rha hai to naya nahi banayegi (Error se bachaegi).
+const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+
 const auth = getAuth(app);
 const googleProvider = new GoogleAuthProvider();
 
+// Analytics ko safe tarike se start karna
 let analytics;
 isSupported().then(supported => {
   if (supported) analytics = getAnalytics(app);
-}).catch(console.error);
+}).catch(() => {});
 
 export { app, auth, googleProvider, analytics };
 
