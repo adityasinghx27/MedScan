@@ -89,6 +89,23 @@ const LegalAndHelp: React.FC = () => {
           )}
       </div>
 
+      {/* Feedback Section */}
+      <div className="mt-12 text-center">
+        <h3 className="text-lg font-bold text-gray-800 mb-4">Help us improve MediIQ AI</h3>
+        <div className="w-full max-w-lg mx-auto bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            <iframe 
+              src="https://docs.google.com/forms/d/e/1FAIpQLSd7pyqVAUUfo1P-f4fPAE9ySkAzDUXqCyFrznJnYVp04wUAgQ/viewform?embedded=true" 
+              width="100%" 
+              height="850" 
+              frameBorder="0" 
+              marginHeight={0}
+              marginWidth={0}
+            >
+              Loading…
+            </iframe>
+        </div>
+      </div>
+
       <div className="mt-8 text-center">
           <p className="text-[10px] text-gray-400">
               MediIQ AI v1.0.1 <br/>

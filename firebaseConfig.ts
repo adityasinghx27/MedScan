@@ -1,8 +1,10 @@
-
-import { initializeApp, getApps, getApp } from "firebase/app";
-import { getAuth, GoogleAuthProvider } from "firebase/auth";
+import { initializeApp } from "firebase/app";
+import { getAuth, GoogleAuthProvider, type Auth } from "firebase/auth";
+// This side-effect import is crucial to prevent a race condition.
+import "firebase/auth";
 import { getAnalytics, isSupported } from "firebase/analytics";
 
+// Configuration
 const firebaseConfig = {
   apiKey: "AIzaSyDdFnW3d4kKyauhldopnkyT9j5TL25zM7c",
   authDomain: "gen-lang-client-0861215458.firebaseapp.com",
@@ -13,36 +15,24 @@ const firebaseConfig = {
   measurementId: "G-32RB4YLOMR"
 };
 
-// 🛡️ RAMBAAN FIX FOR AI STUDIO PREVIEW
-// Hum App aur Auth ko 'window' (global memory) me save karenge.
-// Isse Hot-Reload hone par bhi app crash nahi hoga.
-
-let app;
-let auth;
-const win = typeof window !== "undefined" ? (window as any) : undefined;
-
-if (win && win.firebaseApp) {
-  // Agar pehle se memory me hai, to wahi use karo
-  app = win.firebaseApp;
-} else {
-  // Nahi to naya banao aur memory me save kar lo
-  app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-  if (win) win.firebaseApp = app;
-}
-
-if (win && win.firebaseAuth) {
-  auth = win.firebaseAuth;
-} else {
-  auth = getAuth(app);
-  if (win) win.firebaseAuth = auth;
-}
-
+// 1. Initialize App
+const app = initializeApp(firebaseConfig);
 const googleProvider = new GoogleAuthProvider();
 
-// Analytics safe init
+// 2. LAZY INITIALIZATION PATTERN
+// This robustly prevents race conditions by initializing auth only when first requested.
+let authInstance: Auth | null = null;
+const getFirebaseAuth = (): Auth => {
+  if (!authInstance) {
+    authInstance = getAuth(app);
+  }
+  return authInstance;
+};
+
+// 3. Initialize Analytics (Optional/Safe)
 let analytics;
 isSupported().then(supported => {
   if (supported) analytics = getAnalytics(app);
-}).catch(() => {});
+}).catch(e => console.log('Analytics not supported'));
 
-export { app, auth, googleProvider, analytics };
+export { app, getFirebaseAuth, googleProvider, analytics };
