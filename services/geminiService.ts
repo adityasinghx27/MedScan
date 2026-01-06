@@ -129,7 +129,8 @@ const getFriendlyErrorMessage = (error: any): string => {
     if (msg.includes("500") || msg.includes("overloaded")) {
         return "AI Service Busy. Please try again in a moment.";
     }
-    return "Scan failed. Ensure image is clear and try again.";
+    // Generic fallback - removed "Ensure image is clear" to avoid blaming user for API errors
+    return "Analysis incomplete. Please try scanning again.";
 };
 
 export const analyzeMedicineImage = async (base64Images: string[], profile: PatientProfile): Promise<MedicineData> => {
@@ -140,19 +141,26 @@ export const analyzeMedicineImage = async (base64Images: string[], profile: Pati
     });
 
     const promptText = {
-      text: `Analyze all medicines shown in these ${base64Images.length} images for a ${profile.ageGroup} (${profile.gender}). 
+      text: `Analyze the medicine in these ${base64Images.length} images for a ${profile.ageGroup} (${profile.gender}). 
       Language: ${profile.language}. 
       Pregnancy: ${profile.isPregnant ? 'Yes' : 'No'}. 
       Breastfeeding: ${profile.isBreastfeeding ? 'Yes' : 'No'}.
-      IMPORTANT: Specifically check if these medicines interact with each other and are safe to take as a combination.
-      CRITICAL: Look for the Expiry Date (EXP) on the package and extract it in YYYY-MM-DD format.`
+
+      TASK:
+      1. Identify the medicine name. If text is blurry, infer it from partial letters, logo, or package shape.
+      2. If you absolutely cannot read the name, return "Unidentified Medicine" as the name, and provide general safety advice for pills.
+      3. Check for specific interactions with other drugs if visible.
+      4. EXTRACT EXPIRY DATE (EXP) if visible in YYYY-MM-DD.
+      
+      DO NOT REFUSE TO ANALYZE. PROCESS WHAT YOU SEE.`
     };
 
-    // System instruction updated to prioritize extraction even from imperfect images
-    const systemInstruction = "You are MediIQ AI. Provide professional, accurate medicine analysis. " + 
-        "ALWAYS attempt to extract text, even if the image is slightly blurry, low light, or rotated. " +
-        "Only return an error if the image is completely black, white, or contains absolutely no recognizable object. " +
-        "Try to detect the Expiry Date from the image.";
+    // System instruction updated to be highly tolerant of image quality
+    const systemInstruction = `You are MediIQ AI. 
+    1. TOLERANCE: You accept images that are blurry, rotated, or low light. Do your best to read them using OCR.
+    2. NO REJECTIONS: Never return an error saying "Image is unclear". If you can't read it perfectly, make an educated guess or output generic safety data.
+    3. FORMAT: Output valid JSON matching the schema. No markdown.
+    4. SAFETY: If the medicine is likely dangerous or unknown, set riskScore to 'High'.`;
 
     try {
         const response = await ai.models.generateContent({
@@ -282,10 +290,17 @@ export const getDoctorAIResponse = async (history: ChatMessage[], scanHistory?: 
         `;
     }
 
-    const contents = history.map(msg => ({
+    // FILTER: Remove 'welcome' message or any empty message to prevent API errors about starting with a Model turn.
+    const apiHistory = history.filter(msg => msg.id !== 'welcome' && msg.content.trim() !== '');
+
+    const contents = apiHistory.map(msg => ({
       role: msg.role === 'user' ? 'user' : 'model',
       parts: [{ text: msg.content }]
     }));
+
+    if (contents.length === 0) {
+        return "How can I help you today?";
+    }
 
     const systemInstruction = `You are 'MediIQ Doctor AI', a professional and empathetic medical assistant. 
     ${contextData}
@@ -321,24 +336,24 @@ export const getDoctorAIResponse = async (history: ChatMessage[], scanHistory?: 
     };
 
     try {
-        // Attempt with Gemini Pro (with retry)
-        const response = await generateWithRetry("gemini-3-pro-preview", 1);
+        // Attempt with Gemini Flash first (Faster, higher availability)
+        const response = await generateWithRetry("gemini-3-flash-preview", 1);
         return response.text || "I apologize, I'm having trouble processing that right now.";
     } catch (error: any) {
         const errorMsg = JSON.stringify(error);
-        console.warn("Gemini Pro failed, failing back to Flash:", errorMsg);
+        console.warn("Gemini Flash failed, failing back to Pro:", errorMsg);
         
         if (errorMsg.includes("429") || errorMsg.includes("quota")) {
              return "I'm currently receiving too many requests. Please try again in a few minutes.";
         }
 
         try {
-            // Fallback to Gemini Flash (with retry)
-            const response = await generateWithRetry("gemini-3-flash-preview", 1);
+            // Fallback to Gemini Pro (More powerful, but maybe slower)
+            const response = await generateWithRetry("gemini-3-pro-preview", 1);
             return response.text || "I'm currently unable to assist. Please try again later.";
         } catch (fallbackError) {
              const fbMsg = JSON.stringify(fallbackError);
-             console.error("Doctor AI Critical Error:", fbMsg); // Log real error
+             console.error("Doctor AI Critical Error:", fbMsg); 
              if (fbMsg.includes("429") || fbMsg.includes("quota")) {
                  return "Server usage limit reached. Please come back tomorrow.";
              }
