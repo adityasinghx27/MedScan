@@ -122,14 +122,17 @@ const DIET_SCHEMA: any = {
 
 // Helper to parse errors into user-friendly messages
 const getFriendlyErrorMessage = (error: any): string => {
-    const msg = JSON.stringify(error) || "";
+    const msg = error.message || JSON.stringify(error) || "";
     if (msg.includes("429") || msg.includes("RESOURCE_EXHAUSTED") || msg.includes("quota")) {
         return "Daily Scan Limit Reached. Please try again tomorrow.";
     }
     if (msg.includes("500") || msg.includes("overloaded")) {
         return "AI Service Busy. Please try again in a moment.";
     }
-    // Generic fallback - removed "Ensure image is clear" to avoid blaming user for API errors
+    if (msg.includes("invalid format")) {
+        return "Analysis failed due to an invalid AI response format. Please try your scan again.";
+    }
+    // Generic fallback
     return "Analysis incomplete. Please try scanning again.";
 };
 
@@ -144,46 +147,45 @@ export const analyzeMedicineImage = async (base64Images: string[], profile: Pati
       text: `Analyze the medicine in these ${base64Images.length} images for a ${profile.ageGroup} (${profile.gender}). 
       Language: ${profile.language}. 
       Pregnancy: ${profile.isPregnant ? 'Yes' : 'No'}. 
-      Breastfeeding: ${profile.isBreastfeeding ? 'Yes' : 'No'}.
-
-      TASK:
-      1. Identify the medicine name. If text is blurry, infer it from partial letters, logo, or package shape.
-      2. If you absolutely cannot read the name, return "Unidentified Medicine" as the name, and provide general safety advice for pills.
-      3. Check for specific interactions with other drugs if visible.
-      4. EXTRACT EXPIRY DATE (EXP) if visible in YYYY-MM-DD.
-      
-      DO NOT REFUSE TO ANALYZE. PROCESS WHAT YOU SEE.`
+      Breastfeeding: ${profile.isBreastfeeding ? 'Yes' : 'No'}.`
     };
 
-    // System instruction updated to be highly tolerant of image quality
-    const systemInstruction = `You are MediIQ AI. 
-    1. TOLERANCE: You accept images that are blurry, rotated, or low light. Do your best to read them using OCR.
-    2. NO REJECTIONS: Never return an error saying "Image is unclear". If you can't read it perfectly, make an educated guess or output generic safety data.
-    3. FORMAT: Output valid JSON matching the schema. No markdown.
-    4. SAFETY: If the medicine is likely dangerous or unknown, set riskScore to 'High'.`;
+    const systemInstruction = `You are MediIQ AI, an expert OCR and medicine analysis system.
+    CRITICAL RULE: You MUST ALWAYS output a valid JSON object matching the provided schema. NEVER output plain text, markdown, or any other format.
+    
+    IMAGE QUALITY TOLERANCE:
+    - You are designed to read text from blurry, low-light, rotated, or partially obscured images. ATTEMPT to read the text no matter the quality.
+    - If you can read ANY part of the medicine name, use it. Make a best-effort guess.
+    
+    FAILURE SCENARIO:
+    - If an image is COMPLETELY unreadable (e.g., pure black, no distinguishable features), you MUST still return a valid JSON object.
+    - In this case, use "Unreadable Image" for the 'name' field, and fill other fields with generic safety warnings like "Consult a doctor as the medicine is unreadable." and set riskScore to "High".
+    
+    DO NOT DEVIATE. JSON output is mandatory.`;
 
-    try {
-        const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: {
-            parts: [...parts, promptText]
-        },
-        config: {
-            responseMimeType: "application/json",
-            responseSchema: MEDICINE_SCHEMA,
-            systemInstruction: systemInstruction
-        }
-        });
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: {
+        parts: [...parts, promptText]
+      },
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: MEDICINE_SCHEMA,
+        systemInstruction: systemInstruction
+      }
+    });
 
-        if (response.text) {
-            return JSON.parse(response.text) as MedicineData;
-        }
-    } catch (innerError) {
-        console.warn("Primary analysis attempt failed:", innerError);
-        throw innerError; 
+    if (!response.text) {
+        throw new Error("AI returned an empty response.");
     }
     
-    throw new Error("Empty AI response");
+    try {
+        return JSON.parse(response.text) as MedicineData;
+    } catch (jsonError) {
+        console.error("JSON Parsing Error:", jsonError);
+        console.error("Raw AI Response:", response.text);
+        throw new Error("AI returned an invalid format. This might be a temporary issue.");
+    }
   } catch (error) {
     console.error("Analysis Error:", error);
     throw new Error(getFriendlyErrorMessage(error));
@@ -271,29 +273,21 @@ export const getHealthTip = async (): Promise<string> => {
 
 export const getDoctorAIResponse = async (history: ChatMessage[], scanHistory?: ScanHistoryItem[]): Promise<string> => {
   try {
-    // RAG Logic: Summarize the scan history into context
     let contextData = "";
     if (scanHistory && scanHistory.length > 0) {
-        const historySummary = scanHistory.slice(0, 10).map(item => {
-            const date = new Date(item.timestamp).toLocaleDateString();
-            return `- [${date}] Scanned: ${item.medicineName}. Risk: ${item.data.riskScore}. Purpose: ${item.data.uses.join(', ')}.`;
-        }).join('\n');
-        
+        const recentMedNames = scanHistory.slice(0, 5).map(item => item.medicineName).join(', ');
         contextData = `
-        CONTEXT: You have access to the user's recent medical scan history (Medicines/Reports). 
-        Use this to answer questions about past conditions, comparisons, or drug interactions.
-        USER HISTORY:
-        ${historySummary}
-        
-        If the user asks "Has my sugar increased?", check if there are diabetes medicines or reports in the history and compare them.
-        If the user asks about interactions, check the medicines in the history.
+        CONTEXT: The user's 5 most recent medicine scans are: [${recentMedNames}].
+        Use this scan history to answer questions about past medicines or potential interactions.
+        For example, if the user asks "can I take this with what I took yesterday?", refer to this list.
         `;
     }
 
-    // FILTER: Remove 'welcome' message or any empty message to prevent API errors about starting with a Model turn.
-    const apiHistory = history.filter(msg => msg.id !== 'welcome' && msg.content.trim() !== '');
+    const MAX_HISTORY_MESSAGES = 20;
+    const relevantHistory = history.filter(msg => msg.id !== 'welcome' && msg.content.trim() !== '');
+    const truncatedHistory = relevantHistory.slice(-MAX_HISTORY_MESSAGES);
 
-    const contents = apiHistory.map(msg => ({
+    const contents = truncatedHistory.map(msg => ({
       role: msg.role === 'user' ? 'user' : 'model',
       parts: [{ text: msg.content }]
     }));
@@ -309,11 +303,9 @@ export const getDoctorAIResponse = async (history: ChatMessage[], scanHistory?: 
     If symptoms sound severe, strongly advise visiting an Emergency Room immediately. 
     Keep responses concise and structured with bullet points where appropriate.`;
 
-    // Retry Helper Function
     const generateWithRetry = async (modelName: string, maxRetries = 1) => {
         let attempt = 0;
         let lastError;
-        
         while (attempt <= maxRetries) {
             try {
                 const result = await ai.models.generateContent({
@@ -326,29 +318,22 @@ export const getDoctorAIResponse = async (history: ChatMessage[], scanHistory?: 
                 lastError = e;
                 attempt++;
                 console.warn(`Attempt ${attempt} failed for ${modelName}:`, e);
-                if (attempt <= maxRetries) {
-                    // Backoff delay
-                    await new Promise(r => setTimeout(r, 1000)); 
-                }
+                if (attempt <= maxRetries) await new Promise(r => setTimeout(r, 1000)); 
             }
         }
         throw lastError;
     };
 
     try {
-        // Attempt with Gemini Flash first (Faster, higher availability)
         const response = await generateWithRetry("gemini-3-flash-preview", 1);
         return response.text || "I apologize, I'm having trouble processing that right now.";
     } catch (error: any) {
         const errorMsg = JSON.stringify(error);
-        console.warn("Gemini Flash failed, failing back to Pro:", errorMsg);
-        
+        console.warn("Gemini Flash failed, trying Pro:", errorMsg);
         if (errorMsg.includes("429") || errorMsg.includes("quota")) {
              return "I'm currently receiving too many requests. Please try again in a few minutes.";
         }
-
         try {
-            // Fallback to Gemini Pro (More powerful, but maybe slower)
             const response = await generateWithRetry("gemini-3-pro-preview", 1);
             return response.text || "I'm currently unable to assist. Please try again later.";
         } catch (fallbackError) {
@@ -357,7 +342,7 @@ export const getDoctorAIResponse = async (history: ChatMessage[], scanHistory?: 
              if (fbMsg.includes("429") || fbMsg.includes("quota")) {
                  return "Server usage limit reached. Please come back tomorrow.";
              }
-             return "I am currently unavailable due to technical issues. Please try again in a moment.";
+             return "I am currently unavailable due to a technical issue. Please try again. If the problem continues, clearing the chat history might help.";
         }
     }
   } catch (error) {
