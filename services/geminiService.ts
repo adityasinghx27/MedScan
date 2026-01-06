@@ -148,6 +148,12 @@ export const analyzeMedicineImage = async (base64Images: string[], profile: Pati
       CRITICAL: Look for the Expiry Date (EXP) on the package and extract it in YYYY-MM-DD format.`
     };
 
+    // System instruction updated to prioritize extraction even from imperfect images
+    const systemInstruction = "You are MediIQ AI. Provide professional, accurate medicine analysis. " + 
+        "ALWAYS attempt to extract text, even if the image is slightly blurry, low light, or rotated. " +
+        "Only return an error if the image is completely black, white, or contains absolutely no recognizable object. " +
+        "Try to detect the Expiry Date from the image.";
+
     try {
         const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
@@ -157,7 +163,7 @@ export const analyzeMedicineImage = async (base64Images: string[], profile: Pati
         config: {
             responseMimeType: "application/json",
             responseSchema: MEDICINE_SCHEMA,
-            systemInstruction: "You are MediIQ AI. Provide professional, accurate medicine analysis. Try to detect the Expiry Date from the image."
+            systemInstruction: systemInstruction
         }
         });
 
@@ -288,14 +294,35 @@ export const getDoctorAIResponse = async (history: ChatMessage[], scanHistory?: 
     If symptoms sound severe, strongly advise visiting an Emergency Room immediately. 
     Keep responses concise and structured with bullet points where appropriate.`;
 
-    try {
-        const response = await ai.models.generateContent({
-            model: "gemini-3-pro-preview",
-            contents: contents,
-            config: {
-                systemInstruction: systemInstruction
+    // Retry Helper Function
+    const generateWithRetry = async (modelName: string, maxRetries = 1) => {
+        let attempt = 0;
+        let lastError;
+        
+        while (attempt <= maxRetries) {
+            try {
+                const result = await ai.models.generateContent({
+                    model: modelName,
+                    contents: contents,
+                    config: { systemInstruction }
+                });
+                return result;
+            } catch (e) {
+                lastError = e;
+                attempt++;
+                console.warn(`Attempt ${attempt} failed for ${modelName}:`, e);
+                if (attempt <= maxRetries) {
+                    // Backoff delay
+                    await new Promise(r => setTimeout(r, 1000)); 
+                }
             }
-        });
+        }
+        throw lastError;
+    };
+
+    try {
+        // Attempt with Gemini Pro (with retry)
+        const response = await generateWithRetry("gemini-3-pro-preview", 1);
         return response.text || "I apologize, I'm having trouble processing that right now.";
     } catch (error: any) {
         const errorMsg = JSON.stringify(error);
@@ -306,24 +333,20 @@ export const getDoctorAIResponse = async (history: ChatMessage[], scanHistory?: 
         }
 
         try {
-            const response = await ai.models.generateContent({
-                model: "gemini-3-flash-preview",
-                contents: contents,
-                config: {
-                    systemInstruction: systemInstruction
-                }
-            });
+            // Fallback to Gemini Flash (with retry)
+            const response = await generateWithRetry("gemini-3-flash-preview", 1);
             return response.text || "I'm currently unable to assist. Please try again later.";
         } catch (fallbackError) {
              const fbMsg = JSON.stringify(fallbackError);
+             console.error("Doctor AI Critical Error:", fbMsg); // Log real error
              if (fbMsg.includes("429") || fbMsg.includes("quota")) {
                  return "Server usage limit reached. Please come back tomorrow.";
              }
-             return "I am currently unavailable due to technical issues.";
+             return "I am currently unavailable due to technical issues. Please try again in a moment.";
         }
     }
   } catch (error) {
-    console.error("Doctor AI Error:", error);
+    console.error("Doctor AI Top-Level Error:", error);
     return "I'm currently unable to assist due to a connection issue. If this is an emergency, please call local medical services immediately.";
   }
 };
