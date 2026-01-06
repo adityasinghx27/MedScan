@@ -1,4 +1,4 @@
-import { getFirebaseAuth, googleProvider } from "../firebaseConfig.ts";
+import { auth, googleProvider } from "../firebaseConfig.ts";
 import { 
   signInWithRedirect, 
   getRedirectResult,
@@ -7,9 +7,6 @@ import {
   User as FirebaseUser 
 } from "firebase/auth";
 import { User } from "../types.ts";
-
-// Get the auth instance by calling the initializer function
-const auth = getFirebaseAuth();
 
 export const loginWithGoogle = async (): Promise<void> => {
   if (!auth) throw new Error("Auth not initialized");

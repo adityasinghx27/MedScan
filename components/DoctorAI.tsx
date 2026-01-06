@@ -8,6 +8,14 @@ interface DoctorAIProps {
   userId: string;
 }
 
+// Type definition for Web Speech API
+declare global {
+  interface Window {
+    webkitSpeechRecognition: any;
+    SpeechRecognition: any;
+  }
+}
+
 const DoctorAI: React.FC<DoctorAIProps> = ({ isPremium, onOpenPremium, userId }) => {
   // Helper to get scoped keys
   const getChatKey = () => userId === 'guest' ? 'mediIQ_chat_history' : `mediIQ_${userId}_chat_history`;
@@ -32,6 +40,9 @@ const DoctorAI: React.FC<DoctorAIProps> = ({ isPremium, onOpenPremium, userId })
 
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef<any>(null);
+
   const [usage, setUsage] = useState(() => {
     const today = new Date().toISOString().split('T')[0];
     const saved = localStorage.getItem(getUsageKey());
@@ -82,6 +93,62 @@ const DoctorAI: React.FC<DoctorAIProps> = ({ isPremium, onOpenPremium, userId })
     const today = new Date().toISOString().split('T')[0];
     localStorage.setItem(getUsageKey(), JSON.stringify({ date: today, count: usage }));
   }, [usage, userId]);
+
+  // Cleanup speech recognition on unmount
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+    };
+  }, []);
+
+  const handleVoiceInput = () => {
+    if (isListening) {
+      recognitionRef.current?.stop();
+      return;
+    }
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert("Voice input is not supported in this browser. Please use Chrome or Safari.");
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognitionRef.current = recognition;
+    recognition.lang = 'en-US'; // Could map to profile.language later
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => setIsListening(true);
+    
+    recognition.onend = () => {
+      setIsListening(false);
+      recognitionRef.current = null;
+    };
+
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript;
+      if (transcript) {
+        setInput(prev => {
+          const trimmed = prev.trim();
+          return trimmed ? `${trimmed} ${transcript}` : transcript;
+        });
+      }
+    };
+
+    recognition.onerror = (event: any) => {
+      console.error("Speech recognition error", event.error);
+      setIsListening(false);
+    };
+
+    try {
+      recognition.start();
+    } catch (e) {
+      console.error("Failed to start recognition", e);
+    }
+  };
 
   const handleSend = async (text: string) => {
     if (!text.trim() || isLoading || isLimitReached) return;
@@ -238,6 +305,20 @@ const DoctorAI: React.FC<DoctorAIProps> = ({ isPremium, onOpenPremium, userId })
                         placeholder="Describe your symptoms..."
                         className="flex-1 bg-transparent border-none focus:ring-0 text-slate-800 text-sm font-bold px-6 placeholder-slate-300"
                     />
+                    
+                    {/* Voice Input Button */}
+                    <button
+                      onClick={handleVoiceInput}
+                      className={`w-10 h-10 rounded-2xl mr-2 flex items-center justify-center transition-all ${isListening ? 'bg-rose-500 text-white animate-pulse' : 'text-slate-400 hover:text-indigo-500 bg-slate-50'}`}
+                      title={isListening ? "Stop listening" : "Speak"}
+                    >
+                      {isListening ? (
+                        <div className="w-3 h-3 bg-white rounded-sm animate-bounce"></div>
+                      ) : (
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
+                      )}
+                    </button>
+
                     <button 
                         onClick={() => handleSend(input)}
                         disabled={!input.trim() || isLoading}
