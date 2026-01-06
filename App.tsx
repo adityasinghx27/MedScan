@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import Scanner from './components/Scanner.tsx';
 import MedicineResult from './components/MedicineResult.tsx';
@@ -10,7 +11,10 @@ import LegalAndHelp from './components/LegalAndHelp.tsx';
 import AlarmRingingModal from './components/AlarmRingingModal.tsx';
 import IntroFlow from './components/IntroFlow.tsx';
 import LoginScreen from './components/LoginScreen.tsx';
-import { MedicineData, AppView, Reminder, PatientProfile, ScanHistoryItem, FamilyMember, User } from './types.ts';
+import ExpiryCabinet from './components/ExpiryCabinet.tsx';
+import EmergencyWallpaper from './components/EmergencyWallpaper.tsx';
+import DermaScanner from './components/DermaScanner.tsx';
+import { MedicineData, AppView, Reminder, PatientProfile, ScanHistoryItem, FamilyMember, User, CabinetItem } from './types.ts';
 import { getHealthTip } from './services/geminiService.ts';
 import { subscribeToAuthChanges, loginWithGoogle, logout, handleRedirectResult } from './services/authService.ts';
 
@@ -25,6 +29,7 @@ const App: React.FC = () => {
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [scanHistory, setScanHistory] = useState<ScanHistoryItem[]>([]);
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([]);
+  const [cabinetItems, setCabinetItems] = useState<CabinetItem[]>([]);
   const [isPremium, setIsPremium] = useState<boolean>(false);
   
   // -- UI State --
@@ -58,7 +63,6 @@ const App: React.FC = () => {
     // 2. Handle Redirect Result (Important for Mobile Login)
     handleRedirectResult().catch((error) => {
         console.error("Redirect Error:", error);
-        // Errors are usually handled by the auth state listener, but specific redirect errors can be logged here
     });
 
     // 3. Auth Subscription
@@ -120,6 +124,12 @@ const App: React.FC = () => {
         }
     } catch { setFamilyMembers([]); }
 
+    // Load Cabinet
+    try {
+        const saved = localStorage.getItem(getStorageKey('cabinet'));
+        setCabinetItems(saved ? JSON.parse(saved) : []);
+    } catch { setCabinetItems([]); }
+
     // Load Premium
     try {
         const saved = localStorage.getItem(getStorageKey('premium'));
@@ -148,12 +158,18 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (isLoadingData) return;
+    localStorage.setItem(getStorageKey('cabinet'), JSON.stringify(cabinetItems));
+  }, [cabinetItems, getStorageKey, isLoadingData]);
+
+  useEffect(() => {
+    if (isLoadingData) return;
     localStorage.setItem(getStorageKey('premium'), String(isPremium));
   }, [isPremium, getStorageKey, isLoadingData]);
 
 
-  // -- Alarm Checker --
+  // -- Alarm Checker & Expiry Notification --
   useEffect(() => {
+    // 1. Alarm Check
     const interval = setInterval(() => {
         const now = new Date();
         const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
@@ -164,8 +180,34 @@ const App: React.FC = () => {
         }
     }, 10000); 
 
+    // 2. Expiry Check (Run once on load or when cabinet changes)
+    if (cabinetItems.length > 0 && notificationPermission === 'granted') {
+        const now = new Date();
+        cabinetItems.forEach(item => {
+            const expiry = new Date(item.expiryDate);
+            const diffTime = expiry.getTime() - now.getTime();
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            
+            // Notification logic for expiring meds (7 days or less)
+            if (diffDays <= 7 && diffDays >= -1) {
+                 const noteTitle = diffDays < 0 ? `⚠️ EXPIRED: ${item.medicineName}` : `⚠️ Expiry Alert: ${item.medicineName}`;
+                 const noteBody = diffDays < 0 ? "Throw it away! This medicine has become poison." : `Expires in ${diffDays} days. Plan to dispose of it soon.`;
+                 
+                 // Debounce check using session storage to avoid spamming on refresh (one alert per day per item)
+                 const key = `expiry_alert_${item.id}_${now.toDateString()}`;
+                 if (!sessionStorage.getItem(key)) {
+                    new Notification(noteTitle, {
+                        body: noteBody,
+                        icon: '/favicon.png'
+                    });
+                    sessionStorage.setItem(key, 'sent');
+                 }
+            }
+        });
+    }
+
     return () => clearInterval(interval);
-  }, [reminders, activeAlarm]);
+  }, [reminders, activeAlarm, cabinetItems, notificationPermission]);
 
   // -- Handlers --
 
@@ -186,9 +228,7 @@ const App: React.FC = () => {
   const handleLogin = async () => {
     try {
         await loginWithGoogle();
-        // State reset handled by auth subscription + data loading effect
     } catch (error) {
-        // With redirect, this catch might not trigger for webview issues, but handleRedirectResult will log it
         alert("Login initiation failed. Please try again.");
     }
   };
@@ -215,6 +255,13 @@ const App: React.FC = () => {
   const toggleReminder = (id: string) => setReminders(prev => prev.map(r => r.id === id ? { ...r, active: !r.active } : r));
   const updateReminder = (updated: Reminder) => setReminders(prev => prev.map(r => r.id === updated.id ? updated : r));
   
+  const addCabinetItem = (item: CabinetItem) => setCabinetItems(prev => [...prev, item]);
+  const deleteCabinetItem = (id: string) => setCabinetItems(prev => prev.filter(i => i.id !== id));
+  const clearExpiredCabinet = () => {
+      const now = new Date();
+      setCabinetItems(prev => prev.filter(i => new Date(i.expiryDate) >= now));
+  };
+
   const handleScanComplete = (data: MedicineData, profile: PatientProfile) => {
     const now = Date.now();
     const fourHours = 4 * 60 * 60 * 1000;
@@ -241,10 +288,6 @@ const App: React.FC = () => {
     return <IntroFlow onComplete={handleIntroComplete} />;
   }
 
-  // Show Login Screen if:
-  // 1. Auth check is done
-  // 2. No user logged in
-  // 3. Not in guest mode
   if (authChecked && !currentUser && !isGuest) {
       return <LoginScreen onLogin={handleLogin} onGuest={handleGuestContinue} />;
   }
@@ -264,6 +307,9 @@ const App: React.FC = () => {
             addReminder(rem);
             setCurrentView(AppView.REMINDERS);
             setScannedData(null);
+          }}
+          onAddToCabinet={(item) => {
+              addCabinetItem(item);
           }}
         />
       );
@@ -300,8 +346,44 @@ const App: React.FC = () => {
 
                 <Scanner familyMembers={familyMembers} onScanComplete={handleScanComplete} onError={(msg) => alert(msg)} />
                 
+                <div className="grid grid-cols-2 gap-4 mt-6">
+                    {/* Cabinet Link in Home */}
+                    <button onClick={() => setCurrentView(AppView.CABINET)} className="bg-white text-slate-900 p-5 rounded-[2rem] shadow-xl shadow-slate-200/50 border border-slate-100 flex flex-col items-center justify-center group active:scale-95 transition-all">
+                        <div className="w-10 h-10 bg-indigo-50 text-indigo-500 rounded-2xl flex items-center justify-center text-xl mb-3">🗄️</div>
+                        <h3 className="font-bold text-sm leading-tight">Virtual Cabinet</h3>
+                        <p className="text-[8px] text-slate-400 font-black uppercase tracking-widest mt-1">Check Expiry</p>
+                    </button>
+
+                     {/* Emergency Wallpaper Link */}
+                    <button onClick={() => setCurrentView(AppView.EMERGENCY)} className="bg-slate-900 text-white p-5 rounded-[2rem] shadow-xl shadow-slate-900/20 flex flex-col items-center justify-center group active:scale-95 transition-all relative overflow-hidden">
+                        <div className="absolute top-0 right-0 p-2 opacity-10 text-3xl">🆘</div>
+                        <div className="w-10 h-10 bg-rose-500 text-white rounded-2xl flex items-center justify-center text-xl mb-3 shadow-lg shadow-rose-500/40">❤️</div>
+                        <h3 className="font-bold text-sm leading-tight">Life Saver</h3>
+                        <p className="text-[8px] text-slate-400 font-black uppercase tracking-widest mt-1">QR Wallpaper</p>
+                    </button>
+                </div>
+                
+                {/* NEW DERMA SCAN CARD */}
+                <div className="mt-4">
+                    <button onClick={() => setCurrentView(AppView.DERMA)} className="w-full bg-gradient-to-r from-violet-600 to-indigo-600 text-white p-6 rounded-[2.5rem] shadow-xl shadow-violet-900/20 flex items-center justify-between group active:scale-95 transition-all relative overflow-hidden">
+                         <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10"></div>
+                         <div className="flex items-center space-x-4 relative z-10">
+                             <div className="w-12 h-12 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center text-2xl shadow-inner border border-white/20">
+                                 🧬
+                             </div>
+                             <div className="text-left">
+                                 <h3 className="font-black text-lg leading-tight">Derma-Scan</h3>
+                                 <p className="text-[10px] text-violet-200 font-black uppercase tracking-widest">AI Skin Analysis</p>
+                             </div>
+                         </div>
+                         <div className="w-8 h-8 bg-white/10 rounded-full flex items-center justify-center relative z-10">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7" /></svg>
+                         </div>
+                    </button>
+                </div>
+
                 {!isPremium && (
-                    <div onClick={() => setShowPremiumModal(true)} className="mt-10 bg-slate-900 text-white p-7 rounded-[3rem] shadow-2xl shadow-slate-900/20 flex justify-between items-center cursor-pointer transform transition-all hover:translate-y-[-2px] active:scale-95 group relative overflow-hidden border border-slate-800">
+                    <div onClick={() => setShowPremiumModal(true)} className="mt-6 bg-slate-900 text-white p-7 rounded-[3rem] shadow-2xl shadow-slate-900/20 flex justify-between items-center cursor-pointer transform transition-all hover:translate-y-[-2px] active:scale-95 group relative overflow-hidden border border-slate-800">
                         <div className="absolute inset-0 bg-gradient-to-br from-slate-800 to-slate-900 z-0"></div>
                         <div className="absolute -top-12 -right-12 w-48 h-48 bg-white opacity-[0.05] rounded-full blur-3xl group-hover:opacity-10 transition-opacity"></div>
                         <div className="relative z-10 text-left">
@@ -316,6 +398,12 @@ const App: React.FC = () => {
         );
       case AppView.REMINDERS:
         return <div className="pb-24 bg-slate-50 min-h-screen"><Reminders reminders={reminders} addReminder={addReminder} updateReminder={updateReminder} deleteReminder={deleteReminder} toggleReminder={toggleReminder} notificationPermission={notificationPermission} onRequestNotificationPermission={requestNotificationPermission} /></div>;
+      case AppView.CABINET:
+          return <ExpiryCabinet items={cabinetItems} onDeleteItem={deleteCabinetItem} onClearExpired={clearExpiredCabinet} />;
+      case AppView.EMERGENCY:
+          return <EmergencyWallpaper onBack={() => setCurrentView(AppView.HOME)} userDisplayName={currentUser?.displayName || undefined} />;
+      case AppView.DERMA:
+          return <DermaScanner onBack={() => setCurrentView(AppView.HOME)} />;
       case AppView.HISTORY:
         return <div className="pb-24 bg-slate-50 min-h-screen"><History history={scanHistory} onSelectItem={(data) => { setScannedData(data); setOverdoseWarning(false); setIsPreviouslyScanned(true); }} onClearHistory={() => setScanHistory([])} /></div>;
       case AppView.DOCTOR_AI:
@@ -355,37 +443,40 @@ const App: React.FC = () => {
             notificationPermission={notificationPermission}
           />
       )}
+      
+      {showPremiumModal && (
+        <PremiumModal 
+          isOpen={showPremiumModal} 
+          onClose={() => setShowPremiumModal(false)} 
+          onUpgrade={handleUpgrade} 
+        />
+      )}
 
       {!scannedData && !activeAlarm && (
         <div className="fixed bottom-0 left-0 right-0 max-w-md mx-auto z-[100] bg-white border-t border-slate-100 shadow-[0_-5px_20px_rgba(0,0,0,0.05)] pb-safe">
             <nav className="flex justify-around items-center px-2 py-3">
                 {[
                     { view: AppView.HOME, icon: "M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z M15 13a3 3 0 11-6 0 3 3 0 016 0z", label: "Scan" },
+                    { view: AppView.CABINET, icon: "M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4", label: "Cabinet" },
                     { view: AppView.REMINDERS, icon: "M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z", label: "Alarms" },
                     { view: AppView.DOCTOR_AI, icon: "M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z", label: "Doctor" },
-                    { view: AppView.HISTORY, icon: "M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z", label: "History" },
                     { view: AppView.PROFILE, icon: "M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z", label: "Me" }
                 ].map((item) => {
-                    const isActive = currentView === item.view || (item.view === AppView.HOME && currentView === AppView.SCANNER);
+                    const isActive = currentView === item.view || (item.view === AppView.HOME && (currentView === AppView.SCANNER || currentView === AppView.DERMA));
                     return (
-                        <button key={item.label} onClick={() => setCurrentView(item.view)} className={`flex flex-col items-center justify-center w-16 py-1 rounded-xl transition-all duration-300 ${isActive ? 'text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}>
+                        <button key={item.label} onClick={() => setCurrentView(item.view)} className={`flex flex-col items-center justify-center w-14 py-1 rounded-xl transition-all duration-300 ${isActive ? 'text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}>
                             <div className={`mb-1 transition-all duration-300 ${isActive ? 'bg-slate-900 text-white p-2.5 rounded-2xl shadow-lg' : ''}`}>
                                 <svg className={`w-6 h-6 ${isActive ? 'stroke-2' : 'stroke-[1.5]'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" d={
-                                    item.view === AppView.DOCTOR_AI ? "M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" : 
-                                    item.view === AppView.HISTORY ? "M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" : 
-                                    item.icon
-                                } />
+                                <path strokeLinecap="round" strokeLinejoin="round" d={item.icon} />
                                 </svg>
                             </div>
-                            <span className={`text-[10px] font-bold tracking-tight ${isActive ? 'font-black' : 'font-medium'}`}>{item.label}</span>
+                            {!isActive && <span className="text-[9px] font-bold tracking-wide">{item.label}</span>}
                         </button>
                     );
                 })}
             </nav>
         </div>
       )}
-      <PremiumModal isOpen={showPremiumModal} onClose={() => setShowPremiumModal(false)} onUpgrade={handleUpgrade} />
     </div>
   );
 };

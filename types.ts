@@ -1,3 +1,4 @@
+
 export type AgeGroup = 'child' | 'adult' | 'senior';
 export type Gender = 'male' | 'female';
 export type Language = 'english' | 'hindi' | 'hinglish';
@@ -75,6 +76,39 @@ export interface MedicineData {
   pregnancyWarning?: string;
   breastfeedingWarning?: string;
   ageAdvice?: string;
+  expiryDate?: string; // YYYY-MM-DD format if found
+}
+
+export interface DermaData {
+  conditionName: string;
+  confidence: string; // High, Medium, Low
+  severity: 'Mild' | 'Moderate' | 'Severe';
+  description: string;
+  symptomsObserved: string[];
+  possibleCauses: string[];
+  homeRemedies: string[];
+  otcSuggestions: string[]; // Over the counter creams/meds
+  whenToSeeDoctor: string;
+  isContagious: boolean;
+  disclaimer: string;
+}
+
+export interface DayPlan {
+    day: string;
+    morning: string; // Early morning drink/snack
+    breakfast: string;
+    lunch: string;
+    snack: string; // Evening
+    dinner: string;
+    tip: string;
+}
+
+export interface DietPlan {
+    title: string;
+    overview: string;
+    avoidList: string[];
+    includeList: string[];
+    days: DayPlan[];
 }
 
 export interface ScanHistoryItem {
@@ -82,6 +116,15 @@ export interface ScanHistoryItem {
   timestamp: number;
   medicineName: string;
   data: MedicineData;
+}
+
+export interface CabinetItem {
+  id: string;
+  medicineName: string;
+  expiryDate: string; // YYYY-MM-DD
+  addedAt: number;
+  notes?: string;
+  isExpired: boolean;
 }
 
 export type FoodContext = 'before_food' | 'after_food' | 'empty_stomach' | 'any';
@@ -113,7 +156,10 @@ export enum AppView {
   HISTORY = 'HISTORY',
   DOCTOR_AI = 'DOCTOR_AI',
   PROFILE = 'PROFILE',
-  INFO = 'INFO'
+  INFO = 'INFO',
+  CABINET = 'CABINET',
+  EMERGENCY = 'EMERGENCY',
+  DERMA = 'DERMA'
 }
 
 export interface AnalysisState {

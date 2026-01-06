@@ -1,5 +1,6 @@
+
 import React, { useState, useRef, useEffect } from 'react';
-import { ChatMessage } from '../types.ts';
+import { ChatMessage, ScanHistoryItem } from '../types.ts';
 import { getDoctorAIResponse } from '../services/geminiService.ts';
 
 interface DoctorAIProps {
@@ -20,6 +21,9 @@ const DoctorAI: React.FC<DoctorAIProps> = ({ isPremium, onOpenPremium, userId })
   // Helper to get scoped keys
   const getChatKey = () => userId === 'guest' ? 'mediIQ_chat_history' : `mediIQ_${userId}_chat_history`;
   const getUsageKey = () => userId === 'guest' ? 'mediIQ_daily_chat_usage' : `mediIQ_${userId}_daily_chat_usage`;
+  
+  // Helper to get history key (logic matched with App.tsx)
+  const getHistoryKey = () => userId === 'guest' ? 'mediScan_history' : `mediScan_${userId}_history`;
 
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     try {
@@ -32,12 +36,13 @@ const DoctorAI: React.FC<DoctorAIProps> = ({ isPremium, onOpenPremium, userId })
       {
         id: 'welcome',
         role: 'assistant' as const,
-        content: 'Hello! I am your MediIQ Doctor AI. How can I help you today? Please remember, I am an AI, not a human doctor.',
+        content: 'Hello! I am your MediIQ Doctor AI. I can access your scan history to give you better advice. How can I help you today?',
         timestamp: Date.now()
       }
     ];
   });
 
+  const [scanHistory, setScanHistory] = useState<ScanHistoryItem[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
@@ -53,6 +58,20 @@ const DoctorAI: React.FC<DoctorAIProps> = ({ isPremium, onOpenPremium, userId })
     return 0;
   });
 
+  // Load Scan History for RAG
+  useEffect(() => {
+      try {
+          const savedHistory = localStorage.getItem(getHistoryKey());
+          if (savedHistory) {
+              const parsed = JSON.parse(savedHistory);
+              // Sort by date desc
+              setScanHistory(parsed.sort((a: any, b: any) => b.timestamp - a.timestamp));
+          }
+      } catch (e) {
+          console.error("Failed to load scan history for Doctor AI", e);
+      }
+  }, [userId]);
+
   // Reload history when User ID changes (e.g. login/logout)
   useEffect(() => {
     try {
@@ -64,7 +83,7 @@ const DoctorAI: React.FC<DoctorAIProps> = ({ isPremium, onOpenPremium, userId })
         setMessages([{
           id: 'welcome',
           role: 'assistant' as const,
-          content: 'Hello! I am your MediIQ Doctor AI. How can I help you today? Please remember, I am an AI, not a human doctor.',
+          content: 'Hello! I am your MediIQ Doctor AI. I can access your scan history to give you better advice. How can I help you today?',
           timestamp: Date.now()
         }]);
       }
@@ -166,7 +185,8 @@ const DoctorAI: React.FC<DoctorAIProps> = ({ isPremium, onOpenPremium, userId })
     if (!isPremium) setUsage(prev => prev + 1);
 
     try {
-      const responseText = await getDoctorAIResponse([...messages, userMsg]);
+      // PASSING SCAN HISTORY HERE FOR RAG
+      const responseText = await getDoctorAIResponse([...messages, userMsg], scanHistory);
       const assistantMsg: ChatMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant' as const,
@@ -186,7 +206,7 @@ const DoctorAI: React.FC<DoctorAIProps> = ({ isPremium, onOpenPremium, userId })
       const welcome: ChatMessage = {
         id: 'welcome',
         role: 'assistant' as const,
-        content: 'Hello! I am your MediIQ Doctor AI. How can I help you today? Please remember, I am an AI, not a human doctor.',
+        content: 'Hello! I am your MediIQ Doctor AI. I can access your scan history to give you better advice. How can I help you today?',
         timestamp: Date.now()
       };
       setMessages([welcome]);
@@ -195,7 +215,7 @@ const DoctorAI: React.FC<DoctorAIProps> = ({ isPremium, onOpenPremium, userId })
   };
 
   const quickPrompts = [
-    "I have a mild fever",
+    "Check my history for conflicts",
     "Should I take Advil for headache?",
     "Healthy breakfast tips",
     "How to treat a burn?"
@@ -206,23 +226,34 @@ const DoctorAI: React.FC<DoctorAIProps> = ({ isPremium, onOpenPremium, userId })
       <header className="p-6 pt-10 bg-white border-b border-slate-100 shrink-0 relative z-[60] shadow-sm">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
-             <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center text-2xl shadow-lg shadow-indigo-100">
+             <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center text-2xl shadow-lg shadow-indigo-100 relative">
                👨‍⚕️
+               {scanHistory.length > 0 && (
+                   <span className="absolute -bottom-1 -right-1 w-4 h-4 bg-teal-500 rounded-full border-2 border-white animate-pulse" title="Connected to Scan History"></span>
+               )}
              </div>
              <div>
                <h2 className="text-xl font-black text-slate-900 tracking-tight leading-none mb-1">Doctor AI</h2>
+               <div className="flex items-center space-x-2">
+                 {scanHistory.length > 0 ? (
+                     <span className="text-[9px] font-bold text-teal-600 bg-teal-50 px-2 py-0.5 rounded-md uppercase tracking-widest">History Connected</span>
+                 ) : (
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">No History</span>
+                 )}
+               </div>
+               
                {!isPremium && (
-                 <div className="flex items-center space-x-2">
-                    <div className="w-20 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                 <div className="flex items-center space-x-2 mt-1">
+                    <div className="w-16 h-1 bg-slate-100 rounded-full overflow-hidden">
                         <div className="h-full bg-indigo-500" style={{ width: `${(usage/MAX_FREE_MESSAGES)*100}%` }}></div>
                     </div>
                     <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{MAX_FREE_MESSAGES - usage} Left</span>
                  </div>
                )}
                {isPremium && (
-                 <div className="flex items-center">
-                    <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse mr-2"></div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Premium Unlimited</span>
+                 <div className="flex items-center mt-1">
+                    <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse mr-1"></div>
+                    <span className="text-[8px] font-bold text-emerald-500 uppercase tracking-widest">Premium Active</span>
                  </div>
                )}
              </div>
