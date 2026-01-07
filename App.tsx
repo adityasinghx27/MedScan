@@ -14,7 +14,7 @@ import LoginScreen from './components/LoginScreen.tsx';
 import ExpiryCabinet from './components/ExpiryCabinet.tsx';
 import EmergencyWallpaper from './components/EmergencyWallpaper.tsx';
 import DermaScanner from './components/DermaScanner.tsx';
-import { MedicineData, AppView, Reminder, PatientProfile, ScanHistoryItem, FamilyMember, User, CabinetItem } from './types.ts';
+import { MedicineData, AppView, Reminder, PatientProfile, ScanHistoryItem, FamilyMember, User, CabinetItem, ChatMessage } from './types.ts';
 import { getHealthTip } from './services/geminiService.ts';
 import { subscribeToAuthChanges, loginWithGoogle, logout, handleRedirectResult } from './services/authService.ts';
 
@@ -30,6 +30,7 @@ const App: React.FC = () => {
   const [scanHistory, setScanHistory] = useState<ScanHistoryItem[]>([]);
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([]);
   const [cabinetItems, setCabinetItems] = useState<CabinetItem[]>([]);
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [isPremium, setIsPremium] = useState<boolean>(false);
   
   // -- UI State --
@@ -45,27 +46,24 @@ const App: React.FC = () => {
   const [isLoadingData, setIsLoadingData] = useState(true);
 
   // Helper: Generate Storage Key based on User
-  // Guests use legacy keys (no prefix) to preserve existing data.
-  // Logged-in users use `mediScan_UID_` prefix.
   const getStorageKey = useCallback((baseKey: string) => {
     if (currentUser) {
       return `mediScan_${currentUser.uid}_${baseKey}`;
     }
-    return `mediScan_${baseKey}`;
-  }, [currentUser]);
+    // Guest keys modified to prevent overlap with legacy un-prefixed keys
+    if (isGuest) {
+      return `mediScan_guest_${baseKey}`;
+    }
+    return `mediScan_${baseKey}`; // Fallback for legacy
+  }, [currentUser, isGuest]);
 
   // -- Initialization & Auth --
   useEffect(() => {
-    // 1. Check Intro
     const introSeen = localStorage.getItem('mediScan_intro_seen');
     if (introSeen) setShowIntro(false);
 
-    // 2. Handle Redirect Result (Important for Mobile Login)
-    handleRedirectResult().catch((error) => {
-        console.error("Redirect Error:", error);
-    });
+    handleRedirectResult().catch((error) => console.error("Redirect Error:", error));
 
-    // 3. Auth Subscription
     const unsubscribe = subscribeToAuthChanges((user) => {
       setCurrentUser(user);
       setAuthChecked(true);
@@ -75,7 +73,6 @@ const App: React.FC = () => {
       }
     });
 
-    // 4. Health Tip & Device ID
     if (!localStorage.getItem('mediScan_deviceId')) {
         localStorage.setItem('mediScan_deviceId', crypto.randomUUID());
     }
@@ -87,53 +84,40 @@ const App: React.FC = () => {
   // -- Load Data when User Changes --
   useEffect(() => {
     if (!authChecked) return;
-    if (!currentUser && !isGuest) return; // Wait for login choice
+    if (!currentUser && !isGuest) return;
 
     setIsLoadingData(true);
     
-    // Load Reminders
-    try {
-        const saved = localStorage.getItem(getStorageKey('reminders'));
-        setReminders(saved ? JSON.parse(saved) : []);
-    } catch { setReminders([]); }
+    const loadData = (key: string, setter: (data: any) => void, defaultValue: any) => {
+      try {
+        const saved = localStorage.getItem(getStorageKey(key));
+        setter(saved ? JSON.parse(saved) : defaultValue);
+      } catch { setter(defaultValue); }
+    };
+    
+    loadData('reminders', setReminders, []);
+    loadData('history', setScanHistory, []);
+    loadData('cabinet', setCabinetItems, []);
+    
+    const initialChat: ChatMessage[] = [{ id: 'welcome', role: 'assistant', content: 'Hello! I am your MediIQ Doctor AI. I can access your scan history to give you better advice. How can I help you today?', timestamp: Date.now() }];
+    loadData('chat_history', setChatHistory, initialChat);
 
-    // Load History
     try {
-        const saved = localStorage.getItem(getStorageKey('history'));
-        setScanHistory(saved ? JSON.parse(saved) : []);
-    } catch { setScanHistory([]); }
-
-    // Load Family
-    try {
-        const saved = localStorage.getItem(getStorageKey('family'));
-        if (saved) {
-            setFamilyMembers(JSON.parse(saved));
+        const savedFamily = localStorage.getItem(getStorageKey('family'));
+        if (savedFamily) {
+            setFamilyMembers(JSON.parse(savedFamily));
         } else {
-            // Default Profile
             const defaultMe: FamilyMember = {
-                id: 'me',
-                name: currentUser?.displayName || 'Me',
-                ageGroup: 'adult',
-                gender: 'male',
-                isPregnant: false,
-                isBreastfeeding: false,
-                language: 'english',
+                id: 'me', name: currentUser?.displayName || 'Me', ageGroup: 'adult', gender: 'male', 
+                isPregnant: false, isBreastfeeding: false, language: 'english', 
                 avatar: currentUser?.photoURL ? '📸' : '🧑‍💻'
             };
             setFamilyMembers([defaultMe]);
         }
     } catch { setFamilyMembers([]); }
 
-    // Load Cabinet
     try {
-        const saved = localStorage.getItem(getStorageKey('cabinet'));
-        setCabinetItems(saved ? JSON.parse(saved) : []);
-    } catch { setCabinetItems([]); }
-
-    // Load Premium
-    try {
-        const saved = localStorage.getItem(getStorageKey('premium'));
-        setIsPremium(saved === 'true');
+        setIsPremium(localStorage.getItem(getStorageKey('premium')) === 'true');
     } catch { setIsPremium(false); }
 
     setIsLoadingData(false);
@@ -141,35 +125,23 @@ const App: React.FC = () => {
   }, [currentUser, isGuest, authChecked, getStorageKey]);
 
   // -- Save Data Effects (Triggered on State Change) --
-  useEffect(() => {
-    if (isLoadingData) return;
-    localStorage.setItem(getStorageKey('reminders'), JSON.stringify(reminders));
-  }, [reminders, getStorageKey, isLoadingData]);
-
-  useEffect(() => {
-    if (isLoadingData) return;
-    localStorage.setItem(getStorageKey('history'), JSON.stringify(scanHistory));
-  }, [scanHistory, getStorageKey, isLoadingData]);
-
-  useEffect(() => {
-    if (isLoadingData) return;
-    localStorage.setItem(getStorageKey('family'), JSON.stringify(familyMembers));
-  }, [familyMembers, getStorageKey, isLoadingData]);
-
-  useEffect(() => {
-    if (isLoadingData) return;
-    localStorage.setItem(getStorageKey('cabinet'), JSON.stringify(cabinetItems));
-  }, [cabinetItems, getStorageKey, isLoadingData]);
-
-  useEffect(() => {
-    if (isLoadingData) return;
-    localStorage.setItem(getStorageKey('premium'), String(isPremium));
-  }, [isPremium, getStorageKey, isLoadingData]);
+  const useSaveData = (key: string, data: any) => {
+    useEffect(() => {
+      if (isLoadingData) return;
+      localStorage.setItem(getStorageKey(key), JSON.stringify(data));
+    }, [data, getStorageKey, isLoadingData]);
+  };
+  
+  useSaveData('reminders', reminders);
+  useSaveData('history', scanHistory);
+  useSaveData('family', familyMembers);
+  useSaveData('cabinet', cabinetItems);
+  useSaveData('chat_history', chatHistory);
+  useSaveData('premium', isPremium);
 
 
   // -- Alarm Checker & Expiry Notification --
   useEffect(() => {
-    // 1. Alarm Check
     const interval = setInterval(() => {
         const now = new Date();
         const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
@@ -180,7 +152,6 @@ const App: React.FC = () => {
         }
     }, 10000); 
 
-    // 2. Expiry Check (Run once on load or when cabinet changes)
     if (cabinetItems.length > 0 && notificationPermission === 'granted') {
         const now = new Date();
         cabinetItems.forEach(item => {
@@ -188,18 +159,13 @@ const App: React.FC = () => {
             const diffTime = expiry.getTime() - now.getTime();
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
             
-            // Notification logic for expiring meds (7 days or less)
             if (diffDays <= 7 && diffDays >= -1) {
                  const noteTitle = diffDays < 0 ? `⚠️ EXPIRED: ${item.medicineName}` : `⚠️ Expiry Alert: ${item.medicineName}`;
                  const noteBody = diffDays < 0 ? "Throw it away! This medicine has become poison." : `Expires in ${diffDays} days. Plan to dispose of it soon.`;
                  
-                 // Debounce check using session storage to avoid spamming on refresh (one alert per day per item)
                  const key = `expiry_alert_${item.id}_${now.toDateString()}`;
                  if (!sessionStorage.getItem(key)) {
-                    new Notification(noteTitle, {
-                        body: noteBody,
-                        icon: '/favicon.png'
-                    });
+                    new Notification(noteTitle, { body: noteBody, icon: '/favicon.png' });
                     sessionStorage.setItem(key, 'sent');
                  }
             }
@@ -226,11 +192,7 @@ const App: React.FC = () => {
   };
 
   const handleLogin = async () => {
-    try {
-        await loginWithGoogle();
-    } catch (error) {
-        alert("Login initiation failed. Please try again.");
-    }
+    try { await loginWithGoogle(); } catch (error) { alert("Login initiation failed. Please try again."); }
   };
 
   const handleGuestContinue = () => {
@@ -245,9 +207,7 @@ const App: React.FC = () => {
         setScannedData(null);
         setCurrentView(AppView.HOME);
         localStorage.removeItem('mediScan_is_guest');
-    } catch (error) {
-        console.error("Logout failed", error);
-    }
+    } catch (error) { console.error("Logout failed", error); }
   };
 
   const addReminder = (r: Reminder) => setReminders(prev => [...prev, r]);
@@ -262,14 +222,15 @@ const App: React.FC = () => {
       setCabinetItems(prev => prev.filter(i => new Date(i.expiryDate) >= now));
   };
 
+  const clearChatHistory = () => {
+      const welcome: ChatMessage = { id: 'welcome', role: 'assistant', content: 'Hello! I am your MediIQ Doctor AI. I can access your scan history to give you better advice. How can I help you today?', timestamp: Date.now() };
+      setChatHistory([welcome]);
+  };
+
   const handleScanComplete = (data: MedicineData, profile: PatientProfile) => {
     const now = Date.now();
     const fourHours = 4 * 60 * 60 * 1000;
-    const recentScan = scanHistory.find(item => {
-        const isSameMed = item.medicineName.toLowerCase().trim() === data.name.toLowerCase().trim();
-        const isRecent = (now - item.timestamp) < fourHours;
-        return isSameMed && isRecent;
-    });
+    const recentScan = scanHistory.find(item => item.medicineName.toLowerCase().trim() === data.name.toLowerCase().trim() && (now - item.timestamp) < fourHours);
     setIsPreviouslyScanned(scanHistory.some(item => item.medicineName.toLowerCase().trim() === data.name.toLowerCase().trim()));
     setOverdoseWarning(!!recentScan);
     setScanHistory(prev => [{ id: crypto.randomUUID(), timestamp: now, medicineName: data.name, data }, ...prev].slice(0, 20));
@@ -308,9 +269,7 @@ const App: React.FC = () => {
             setCurrentView(AppView.REMINDERS);
             setScannedData(null);
           }}
-          onAddToCabinet={(item) => {
-              addCabinetItem(item);
-          }}
+          onAddToCabinet={addCabinetItem}
         />
       );
     }
@@ -347,14 +306,12 @@ const App: React.FC = () => {
                 <Scanner familyMembers={familyMembers} onScanComplete={handleScanComplete} onError={(msg) => alert(msg)} />
                 
                 <div className="grid grid-cols-2 gap-4 mt-6">
-                    {/* Cabinet Link in Home */}
                     <button onClick={() => setCurrentView(AppView.CABINET)} className="bg-white text-slate-900 p-5 rounded-[2rem] shadow-xl shadow-slate-200/50 border border-slate-100 flex flex-col items-center justify-center group active:scale-95 transition-all">
                         <div className="w-10 h-10 bg-indigo-50 text-indigo-500 rounded-2xl flex items-center justify-center text-xl mb-3">🗄️</div>
                         <h3 className="font-bold text-sm leading-tight">Virtual Cabinet</h3>
                         <p className="text-[8px] text-slate-400 font-black uppercase tracking-widest mt-1">Check Expiry</p>
                     </button>
 
-                     {/* Emergency Wallpaper Link */}
                     <button onClick={() => setCurrentView(AppView.EMERGENCY)} className="bg-slate-900 text-white p-5 rounded-[2rem] shadow-xl shadow-slate-900/20 flex flex-col items-center justify-center group active:scale-95 transition-all relative overflow-hidden">
                         <div className="absolute top-0 right-0 p-2 opacity-10 text-3xl">🆘</div>
                         <div className="w-10 h-10 bg-rose-500 text-white rounded-2xl flex items-center justify-center text-xl mb-3 shadow-lg shadow-rose-500/40">❤️</div>
@@ -363,7 +320,6 @@ const App: React.FC = () => {
                     </button>
                 </div>
                 
-                {/* NEW DERMA SCAN CARD */}
                 <div className="mt-4">
                     <button onClick={() => setCurrentView(AppView.DERMA)} className="w-full bg-gradient-to-r from-violet-600 to-indigo-600 text-white p-6 rounded-[2.5rem] shadow-xl shadow-violet-900/20 flex items-center justify-between group active:scale-95 transition-all relative overflow-hidden">
                          <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10"></div>
@@ -407,7 +363,7 @@ const App: React.FC = () => {
       case AppView.HISTORY:
         return <div className="pb-24 bg-slate-50 min-h-screen"><History history={scanHistory} onSelectItem={(data) => { setScannedData(data); setOverdoseWarning(false); setIsPreviouslyScanned(true); }} onClearHistory={() => setScanHistory([])} /></div>;
       case AppView.DOCTOR_AI:
-        return <DoctorAI isPremium={isPremium} onOpenPremium={() => setShowPremiumModal(true)} userId={currentUser?.uid || 'guest'} />;
+        return <DoctorAI isPremium={isPremium} onOpenPremium={() => setShowPremiumModal(true)} userId={currentUser?.uid || 'guest'} messages={chatHistory} setMessages={setChatHistory} onClearChat={clearChatHistory} scanHistory={scanHistory} />;
       case AppView.INFO:
           return <div className="pb-24 bg-slate-50 min-h-screen"><LegalAndHelp /></div>;
       case AppView.PROFILE:
@@ -457,10 +413,10 @@ const App: React.FC = () => {
             <nav className="flex justify-around items-center px-2 py-3">
                 {[
                     { view: AppView.HOME, icon: "M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z M15 13a3 3 0 11-6 0 3 3 0 016 0z", label: "Scan" },
-                    { view: AppView.CABINET, icon: "M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4", label: "Cabinet" },
-                    { view: AppView.REMINDERS, icon: "M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z", label: "Alarms" },
+                    { view: AppView.HISTORY, icon: "M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z", label: "History" },
+                    { view: AppView.REMINDERS, icon: "M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9", label: "Alarms" },
                     { view: AppView.DOCTOR_AI, icon: "M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z", label: "Doctor" },
-                    { view: AppView.PROFILE, icon: "M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z", label: "Me" }
+                    { view: AppView.PROFILE, icon: "M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14", label: "Profile" }
                 ].map((item) => {
                     const isActive = currentView === item.view || (item.view === AppView.HOME && (currentView === AppView.SCANNER || currentView === AppView.DERMA));
                     return (

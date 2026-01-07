@@ -7,6 +7,10 @@ interface DoctorAIProps {
   isPremium: boolean;
   onOpenPremium: () => void;
   userId: string;
+  messages: ChatMessage[];
+  setMessages: (messages: ChatMessage[]) => void;
+  onClearChat: () => void;
+  scanHistory: ScanHistoryItem[];
 }
 
 // Type definition for Web Speech API
@@ -17,32 +21,9 @@ declare global {
   }
 }
 
-const DoctorAI: React.FC<DoctorAIProps> = ({ isPremium, onOpenPremium, userId }) => {
-  // Helper to get scoped keys
-  const getChatKey = () => userId === 'guest' ? 'mediIQ_chat_history' : `mediIQ_${userId}_chat_history`;
+const DoctorAI: React.FC<DoctorAIProps> = ({ isPremium, onOpenPremium, userId, messages, setMessages, onClearChat, scanHistory }) => {
   const getUsageKey = () => userId === 'guest' ? 'mediIQ_daily_chat_usage' : `mediIQ_${userId}_daily_chat_usage`;
-  
-  // Helper to get history key (logic matched with App.tsx)
-  const getHistoryKey = () => userId === 'guest' ? 'mediScan_history' : `mediScan_${userId}_history`;
 
-  const [messages, setMessages] = useState<ChatMessage[]>(() => {
-    try {
-      const saved = localStorage.getItem(getChatKey());
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error("Failed to load chat history", e);
-    }
-    return [
-      {
-        id: 'welcome',
-        role: 'assistant' as const,
-        content: 'Hello! I am your MediIQ Doctor AI. I can access your scan history to give you better advice. How can I help you today?',
-        timestamp: Date.now()
-      }
-    ];
-  });
-
-  const [scanHistory, setScanHistory] = useState<ScanHistoryItem[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
@@ -58,55 +39,13 @@ const DoctorAI: React.FC<DoctorAIProps> = ({ isPremium, onOpenPremium, userId })
     return 0;
   });
 
-  // Load Scan History for RAG
-  useEffect(() => {
-      try {
-          const savedHistory = localStorage.getItem(getHistoryKey());
-          if (savedHistory) {
-              const parsed = JSON.parse(savedHistory);
-              // Sort by date desc
-              setScanHistory(parsed.sort((a: any, b: any) => b.timestamp - a.timestamp));
-          }
-      } catch (e) {
-          console.error("Failed to load scan history for Doctor AI", e);
-      }
-  }, [userId]);
-
-  // Reload history when User ID changes (e.g. login/logout)
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(getChatKey());
-      if (saved) {
-        setMessages(JSON.parse(saved));
-      } else {
-        // Reset to welcome if no history found for this user
-        setMessages([{
-          id: 'welcome',
-          role: 'assistant' as const,
-          content: 'Hello! I am your MediIQ Doctor AI. I can access your scan history to give you better advice. How can I help you today?',
-          timestamp: Date.now()
-        }]);
-      }
-      
-      const today = new Date().toISOString().split('T')[0];
-      const savedUsage = localStorage.getItem(getUsageKey());
-      if (savedUsage) {
-          const parsed = JSON.parse(savedUsage);
-          setUsage(parsed.date === today ? parsed.count : 0);
-      } else {
-          setUsage(0);
-      }
-    } catch(e) { console.error(e); }
-  }, [userId]);
-
   const scrollRef = useRef<HTMLDivElement>(null);
   const MAX_FREE_MESSAGES = 10;
   const isLimitReached = !isPremium && usage >= MAX_FREE_MESSAGES;
 
   useEffect(() => {
-    localStorage.setItem(getChatKey(), JSON.stringify(messages));
     scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, userId]);
+  }, [messages]);
 
   useEffect(() => {
     const today = new Date().toISOString().split('T')[0];
@@ -136,7 +75,7 @@ const DoctorAI: React.FC<DoctorAIProps> = ({ isPremium, onOpenPremium, userId })
 
     const recognition = new SpeechRecognition();
     recognitionRef.current = recognition;
-    recognition.lang = 'en-US'; // Could map to profile.language later
+    recognition.lang = 'en-US'; 
     recognition.interimResults = false;
     recognition.maxAlternatives = 1;
 
@@ -179,38 +118,32 @@ const DoctorAI: React.FC<DoctorAIProps> = ({ isPremium, onOpenPremium, userId })
       timestamp: Date.now()
     };
 
-    setMessages(prev => [...prev, userMsg]);
+    const newMessages = [...messages, userMsg];
+    setMessages(newMessages);
     setInput('');
     setIsLoading(true);
     if (!isPremium) setUsage(prev => prev + 1);
 
     try {
-      // PASSING SCAN HISTORY HERE FOR RAG
-      const responseText = await getDoctorAIResponse([...messages, userMsg], scanHistory);
+      const responseText = await getDoctorAIResponse(newMessages, scanHistory);
       const assistantMsg: ChatMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant' as const,
         content: responseText,
         timestamp: Date.now()
       };
-      setMessages(prev => [...prev, assistantMsg]);
+      setMessages([...newMessages, assistantMsg]);
     } catch (error) {
       console.error("Chat error", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const clearChat = () => {
-    if (confirm("Clear all chat history?")) {
-      const welcome: ChatMessage = {
-        id: 'welcome',
+      const errorMsg: ChatMessage = {
+        id: (Date.now() + 1).toString(),
         role: 'assistant' as const,
-        content: 'Hello! I am your MediIQ Doctor AI. I can access your scan history to give you better advice. How can I help you today?',
+        content: "Sorry, I encountered an error. Please try again.",
         timestamp: Date.now()
       };
-      setMessages([welcome]);
-      localStorage.removeItem(getChatKey());
+      setMessages([...newMessages, errorMsg]);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -260,7 +193,7 @@ const DoctorAI: React.FC<DoctorAIProps> = ({ isPremium, onOpenPremium, userId })
           </div>
           {messages.length > 1 && (
             <button 
-              onClick={clearChat}
+              onClick={onClearChat}
               className="p-3 bg-slate-50 text-slate-400 rounded-xl hover:text-rose-500 hover:bg-rose-50 transition-all active:scale-90"
               title="Clear Chat"
             >
@@ -337,7 +270,6 @@ const DoctorAI: React.FC<DoctorAIProps> = ({ isPremium, onOpenPremium, userId })
                         className="flex-1 bg-transparent border-none focus:ring-0 text-slate-800 text-sm font-bold px-6 placeholder-slate-300"
                     />
                     
-                    {/* Voice Input Button */}
                     <button
                       onClick={handleVoiceInput}
                       className={`w-10 h-10 rounded-2xl mr-2 flex items-center justify-center transition-all ${isListening ? 'bg-rose-500 text-white animate-pulse' : 'text-slate-400 hover:text-indigo-500 bg-slate-50'}`}

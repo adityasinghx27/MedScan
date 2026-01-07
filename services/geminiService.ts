@@ -283,7 +283,7 @@ export const getDoctorAIResponse = async (history: ChatMessage[], scanHistory?: 
         `;
     }
 
-    const MAX_HISTORY_MESSAGES = 20;
+    const MAX_HISTORY_MESSAGES = 10; // Reduced history to prevent overload
     const relevantHistory = history.filter(msg => msg.id !== 'welcome' && msg.content.trim() !== '');
     const truncatedHistory = relevantHistory.slice(-MAX_HISTORY_MESSAGES);
 
@@ -302,48 +302,23 @@ export const getDoctorAIResponse = async (history: ChatMessage[], scanHistory?: 
     ALWAYS include a disclaimer that you are an AI and not a real doctor. 
     If symptoms sound severe, strongly advise visiting an Emergency Room immediately. 
     Keep responses concise and structured with bullet points where appropriate.`;
-
-    const generateWithRetry = async (modelName: string, maxRetries = 1) => {
-        let attempt = 0;
-        let lastError;
-        while (attempt <= maxRetries) {
-            try {
-                const result = await ai.models.generateContent({
-                    model: modelName,
-                    contents: contents,
-                    config: { systemInstruction }
-                });
-                return result;
-            } catch (e) {
-                lastError = e;
-                attempt++;
-                console.warn(\`Attempt \${attempt} failed for \${modelName}:\`, e);
-                if (attempt <= maxRetries) await new Promise(r => setTimeout(r, 1000)); 
-            }
-        }
-        throw lastError;
-    };
-
+    
+    // Using a single, reliable model. Removed complex retry logic for simplicity and stability.
     try {
-        const response = await generateWithRetry("gemini-3-flash-preview", 1);
-        return response.text || "I apologize, I'm having trouble processing that right now.";
+        const response = await ai.models.generateContent({
+            model: "gemini-3-flash-preview", // Sticking to the more reliable and faster model
+            contents: contents,
+            config: { systemInstruction }
+        });
+        return response.text || "I apologize, I'm having trouble processing that right now. Could you rephrase?";
     } catch (error: any) {
         const errorMsg = JSON.stringify(error);
-        console.warn("Gemini Flash failed, trying Pro:", errorMsg);
+        console.error("Doctor AI Critical Error:", errorMsg); 
         if (errorMsg.includes("429") || errorMsg.includes("quota")) {
-             return "I'm currently receiving too many requests. Please try again in a few minutes.";
+            return "Server usage limit reached. Please come back tomorrow.";
         }
-        try {
-            const response = await generateWithRetry("gemini-3-pro-preview", 1);
-            return response.text || "I'm currently unable to assist. Please try again later.";
-        } catch (fallbackError) {
-             const fbMsg = JSON.stringify(fallbackError);
-             console.error("Doctor AI Critical Error:", fbMsg); 
-             if (fbMsg.includes("429") || fbMsg.includes("quota")) {
-                 return "Server usage limit reached. Please come back tomorrow.";
-             }
-             return "I am currently unavailable due to a technical issue. Please try again. If the problem continues, clearing the chat history might help.";
-        }
+        // A more helpful error message for users
+        return "I am currently unavailable due to a technical issue. Please try again in a moment. If the problem continues, clearing the chat might help resolve it.";
     }
   } catch (error) {
     console.error("Doctor AI Top-Level Error:", error);
