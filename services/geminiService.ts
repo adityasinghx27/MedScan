@@ -317,7 +317,7 @@ export const getDoctorAIResponse = async (history: ChatMessage[], scanHistory?: 
             } catch (e) {
                 lastError = e;
                 attempt++;
-                console.warn(`Attempt ${attempt} failed for ${modelName}:`, e);
+                console.warn(\`Attempt \${attempt} failed for \${modelName}:\`, e);
                 if (attempt <= maxRetries) await new Promise(r => setTimeout(r, 1000)); 
             }
         }
