@@ -1,15 +1,22 @@
 // @ts-nocheck
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI, SchemaType } from "@google/genai";
 
 // ---------------------------------------------------------
-// CONFIGURATION
+// 👇👇👇 SIRF YAHAN APNI KEY DALEIN 👇👇👇
 // ---------------------------------------------------------
 
-// ✅ FIX: Match the Vercel Variable Name
-const API_KEY = process.env.REACT_APP_GEMINI_KEY || process.env.NEXT_PUBLIC_GEMINI_KEY || "dummy_key";
+// In quotes ke beech mein apni lambi wali Key paste karein
+const API_KEY = "AIzaSyCiAA2DhF7VlNKDBN5dWVl3ko4GqOoEYtw"; 
 
-// ✅ MODEL: Using Stable Model
+// ---------------------------------------------------------
+
+// ✅ MODEL: Using the most stable model
 const MODEL_NAME = "gemini-1.5-flash";
+
+// Check kar rahe hain ki key dali hai ya nahi
+if (API_KEY === "YAHAN_APNI_KEY_PASTE_KAREIN") {
+    console.error("❌ Galti: Aapne API Key paste nahi ki! Code mein line number 9 check karein.");
+}
 
 const ai = new GoogleGenAI({ apiKey: API_KEY });
 
@@ -21,72 +28,70 @@ const SAFETY_SETTINGS = [
   { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" }
 ];
 
-// ---------------------------------------------------------
-// SCHEMAS (Corrected 'Type' Import)
-// ---------------------------------------------------------
+// ---------------------- SCHEMAS ----------------------
 
 const MEDICINE_SCHEMA: any = {
-  type: Type.OBJECT,
+  type: SchemaType.OBJECT,
   properties: {
-    name: { type: Type.STRING },
-    medicationsFound: { type: Type.ARRAY, items: { type: Type.STRING } },
-    description: { type: Type.STRING },
-    simpleExplanation: { type: Type.STRING },
-    childFriendlyExplanation: { type: Type.STRING },
-    uses: { type: Type.ARRAY, items: { type: Type.STRING } },
-    dosage: { type: Type.STRING },
-    sideEffects: { type: Type.ARRAY, items: { type: Type.STRING } },
-    warnings: { type: Type.STRING },
-    keyWarning: { type: Type.STRING },
-    riskScore: { type: Type.STRING, enum: ["Low", "Medium", "High"] },
-    riskReason: { type: Type.STRING },
-    whoShouldAvoid: { type: Type.ARRAY, items: { type: Type.STRING } },
-    foodGuidance: { type: Type.STRING },
-    alternatives: { type: Type.ARRAY, items: { type: Type.STRING } },
+    name: { type: SchemaType.STRING },
+    medicationsFound: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+    description: { type: SchemaType.STRING },
+    simpleExplanation: { type: SchemaType.STRING },
+    childFriendlyExplanation: { type: SchemaType.STRING },
+    uses: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+    dosage: { type: SchemaType.STRING },
+    sideEffects: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+    warnings: { type: SchemaType.STRING },
+    keyWarning: { type: SchemaType.STRING },
+    riskScore: { type: SchemaType.STRING, enum: ["Low", "Medium", "High"] },
+    riskReason: { type: SchemaType.STRING },
+    whoShouldAvoid: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+    foodGuidance: { type: SchemaType.STRING },
+    alternatives: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
     interactionAnalysis: {
-      type: Type.OBJECT,
+      type: SchemaType.OBJECT,
       properties: {
-        severity: { type: Type.STRING, enum: ["Safe", "Warning", "Dangerous"] },
-        summary: { type: Type.STRING },
-        advice: { type: Type.STRING }
+        severity: { type: SchemaType.STRING, enum: ["Safe", "Warning", "Dangerous"] },
+        summary: { type: SchemaType.STRING },
+        advice: { type: SchemaType.STRING }
       },
       required: ["severity", "summary", "advice"]
     },
     effectTimeline: {
-        type: Type.OBJECT,
+        type: SchemaType.OBJECT,
         properties: {
-            onset: { type: Type.STRING },
-            peak: { type: Type.STRING },
-            duration: { type: Type.STRING }
+            onset: { type: SchemaType.STRING },
+            peak: { type: SchemaType.STRING },
+            duration: { type: SchemaType.STRING }
         },
         required: ["onset", "peak", "duration"]
     },
     lifestyleWarnings: {
-        type: Type.OBJECT,
+        type: SchemaType.OBJECT,
         properties: {
-            alcohol: { type: Type.BOOLEAN },
-            driving: { type: Type.BOOLEAN },
-            sleep: { type: Type.BOOLEAN }
+            alcohol: { type: SchemaType.BOOLEAN },
+            driving: { type: SchemaType.BOOLEAN },
+            sleep: { type: SchemaType.BOOLEAN }
         },
         required: ["alcohol", "driving", "sleep"]
     },
-    safetyRating: { type: Type.NUMBER },
+    safetyRating: { type: SchemaType.NUMBER },
     commonQuestions: {
-        type: Type.ARRAY,
+        type: SchemaType.ARRAY,
         items: {
-            type: Type.OBJECT,
+            type: SchemaType.OBJECT,
             properties: {
-                question: { type: Type.STRING },
-                answer: { type: Type.STRING }
+                question: { type: SchemaType.STRING },
+                answer: { type: SchemaType.STRING }
             },
             required: ["question", "answer"]
         }
     },
-    criticalWarning: { type: Type.STRING },
-    pregnancyWarning: { type: Type.STRING },
-    breastfeedingWarning: { type: Type.STRING },
-    ageAdvice: { type: Type.STRING },
-    expiryDate: { type: Type.STRING }
+    criticalWarning: { type: SchemaType.STRING },
+    pregnancyWarning: { type: SchemaType.STRING },
+    breastfeedingWarning: { type: SchemaType.STRING },
+    ageAdvice: { type: SchemaType.STRING },
+    expiryDate: { type: SchemaType.STRING }
   },
   required: [
     "name", "medicationsFound", "description", "simpleExplanation", "childFriendlyExplanation", "uses", "dosage", 
@@ -96,42 +101,42 @@ const MEDICINE_SCHEMA: any = {
 };
 
 const DERMA_SCHEMA: any = {
-  type: Type.OBJECT,
+  type: SchemaType.OBJECT,
   properties: {
-    conditionName: { type: Type.STRING },
-    confidence: { type: Type.STRING, enum: ["High", "Medium", "Low"] },
-    severity: { type: Type.STRING, enum: ["Mild", "Moderate", "Severe"] },
-    description: { type: Type.STRING },
-    symptomsObserved: { type: Type.ARRAY, items: { type: Type.STRING } },
-    possibleCauses: { type: Type.ARRAY, items: { type: Type.STRING } },
-    homeRemedies: { type: Type.ARRAY, items: { type: Type.STRING } },
-    otcSuggestions: { type: Type.ARRAY, items: { type: Type.STRING } },
-    whenToSeeDoctor: { type: Type.STRING },
-    isContagious: { type: Type.BOOLEAN },
-    disclaimer: { type: Type.STRING }
+    conditionName: { type: SchemaType.STRING },
+    confidence: { type: SchemaType.STRING, enum: ["High", "Medium", "Low"] },
+    severity: { type: SchemaType.STRING, enum: ["Mild", "Moderate", "Severe"] },
+    description: { type: SchemaType.STRING },
+    symptomsObserved: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+    possibleCauses: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+    homeRemedies: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+    otcSuggestions: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+    whenToSeeDoctor: { type: SchemaType.STRING },
+    isContagious: { type: SchemaType.BOOLEAN },
+    disclaimer: { type: SchemaType.STRING }
   },
   required: ["conditionName", "severity", "description", "symptomsObserved", "homeRemedies", "otcSuggestions", "whenToSeeDoctor", "disclaimer"]
 };
 
 const DIET_SCHEMA: any = {
-    type: Type.OBJECT,
+    type: SchemaType.OBJECT,
     properties: {
-        title: { type: Type.STRING },
-        overview: { type: Type.STRING },
-        avoidList: { type: Type.ARRAY, items: { type: Type.STRING } },
-        includeList: { type: Type.ARRAY, items: { type: Type.STRING } },
+        title: { type: SchemaType.STRING },
+        overview: { type: SchemaType.STRING },
+        avoidList: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+        includeList: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
         days: {
-            type: Type.ARRAY,
+            type: SchemaType.ARRAY,
             items: {
-                type: Type.OBJECT,
+                type: SchemaType.OBJECT,
                 properties: {
-                    day: { type: Type.STRING },
-                    morning: { type: Type.STRING },
-                    breakfast: { type: Type.STRING },
-                    lunch: { type: Type.STRING },
-                    snack: { type: Type.STRING },
-                    dinner: { type: Type.STRING },
-                    tip: { type: Type.STRING }
+                    day: { type: SchemaType.STRING },
+                    morning: { type: SchemaType.STRING },
+                    breakfast: { type: SchemaType.STRING },
+                    lunch: { type: SchemaType.STRING },
+                    snack: { type: SchemaType.STRING },
+                    dinner: { type: SchemaType.STRING },
+                    tip: { type: SchemaType.STRING }
                 },
                 required: ["day", "morning", "breakfast", "lunch", "snack", "dinner", "tip"]
             }
@@ -140,23 +145,19 @@ const DIET_SCHEMA: any = {
     required: ["title", "overview", "avoidList", "includeList", "days"]
 };
 
-// ---------------------------------------------------------
-// ERROR HANDLING
-// ---------------------------------------------------------
+// ---------------------- ERROR HANDLING ----------------------
 
 const getFriendlyErrorMessage = (error: any): string => {
     const msg = error.message || JSON.stringify(error) || "";
     console.error("Gemini Error Log:", msg);
     
-    if (msg.includes("429") || msg.includes("quota")) return "Daily Scan Limit Reached. Try again tomorrow.";
-    if (msg.includes("500") || msg.includes("overloaded") || msg.includes("unavailable")) return "Server Busy. Please retry.";
-    if (msg.includes("API Key")) return "System Error: API Key is missing or invalid.";
+    if (msg.includes("429") || msg.includes("quota")) return "Daily Scan Limit Reached.";
+    if (msg.includes("500") || msg.includes("overloaded")) return "Server Busy. Please retry.";
+    if (msg.includes("API Key")) return "Error: API Key Invalid/Missing.";
     return `Scan Failed: ${msg.substring(0, 50)}...`;
 };
 
-// ---------------------------------------------------------
-// MAIN FUNCTIONS
-// ---------------------------------------------------------
+// ---------------------- MAIN FUNCTIONS ----------------------
 
 export const analyzeMedicineImage = async (base64Images: string[], profile: any): Promise<any> => {
   try {
@@ -166,11 +167,9 @@ export const analyzeMedicineImage = async (base64Images: string[], profile: any)
     });
 
     const systemInstruction = `You are MediIQ AI. 
-    IMPORTANT: You are an expert at reading BLURRY and LOW LIGHT images.
-    1. NEVER reject an image because it is blurry. ALWAYS try to read the text.
-    2. If you see even 2-3 letters, guess the medicine name.
-    3. Output MUST be valid JSON.
-    4. If completely unreadable, set name to "Unknown Medicine".`;
+    IMPORTANT: Ignore blurriness. ALWAYS try to read the text.
+    Guess the medicine name if partially visible.
+    Output MUST be valid JSON.`;
 
     const response = await ai.models.generateContent({
       model: MODEL_NAME,
@@ -276,7 +275,7 @@ export const getDoctorAIResponse = async (history: any[], scanHistory?: any[]): 
 
   } catch (error) {
     console.error("Doctor AI Error:", error);
-    return "Doctor AI is currently unavailable (Network/API Error). Please retry.";
+    return "Doctor AI is currently unavailable. Please retry.";
   }
 };
-              
+
