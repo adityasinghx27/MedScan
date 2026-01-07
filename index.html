@@ -7,8 +7,9 @@
     <title>MediIQ</title>
     <script>
       // Polyfill process IMMEDIATELY before any modules load
-      window.process = window.process || { env: { API_KEY: "" } };
-      console.log("System: Process polyfill initialized.");
+      // CRITICAL: Injecting the API key here to make the app functional in this environment.
+      window.process = window.process || { env: { API_KEY: "AIzaSyCiAA2DhF7VlNKDBN5dWVl3ko4GqOoEYtw" } };
+      console.log("System: Process polyfill initialized with API key.");
     </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
