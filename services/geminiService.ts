@@ -1,72 +1,91 @@
+import { GoogleGenAI, SchemaType } from "@google/genai";
+import { MedicineData, PatientProfile, ChatMessage, DermaData, ScanHistoryItem, DietPlan } from "../types";
 
-import { GoogleGenAI, Type } from "@google/genai";
-import { MedicineData, PatientProfile, ChatMessage, DermaData, ScanHistoryItem, DietPlan } from "../types.ts";
+// ✅ CONFIG: Using Stable Model
+const MODEL_NAME = "gemini-1.5-flash";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// ✅ FIX: Correct Variable Name matching Vercel
+const API_KEY = process.env.REACT_APP_GEMINI_KEY || process.env.VITE_GEMINI_KEY;
 
-// Define the medicine schema for structured JSON output as a plain object to avoid deprecated types
+if (!API_KEY) {
+  // Agar key nahi mili to console me error dikhega
+  console.error("CRITICAL ERROR: API Key missing. Check Vercel Settings.");
+}
+
+const ai = new GoogleGenAI({ apiKey: API_KEY || "dummy_key_to_prevent_crash" });
+
+// ✅ SAFETY SETTINGS DISABLED
+const SAFETY_SETTINGS = [
+  { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+  { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+  { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
+  { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" }
+];
+
+// --- SCHEMAS ---
+
 const MEDICINE_SCHEMA: any = {
-  type: Type.OBJECT,
+  type: SchemaType.OBJECT,
   properties: {
-    name: { type: Type.STRING },
-    medicationsFound: { type: Type.ARRAY, items: { type: Type.STRING } },
-    description: { type: Type.STRING },
-    simpleExplanation: { type: Type.STRING },
-    childFriendlyExplanation: { type: Type.STRING },
-    uses: { type: Type.ARRAY, items: { type: Type.STRING } },
-    dosage: { type: Type.STRING },
-    sideEffects: { type: Type.ARRAY, items: { type: Type.STRING } },
-    warnings: { type: Type.STRING },
-    keyWarning: { type: Type.STRING },
-    riskScore: { type: Type.STRING, enum: ["Low", "Medium", "High"] },
-    riskReason: { type: Type.STRING },
-    whoShouldAvoid: { type: Type.ARRAY, items: { type: Type.STRING } },
-    foodGuidance: { type: Type.STRING },
-    alternatives: { type: Type.ARRAY, items: { type: Type.STRING } },
+    name: { type: SchemaType.STRING },
+    medicationsFound: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+    description: { type: SchemaType.STRING },
+    simpleExplanation: { type: SchemaType.STRING },
+    childFriendlyExplanation: { type: SchemaType.STRING },
+    uses: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+    dosage: { type: SchemaType.STRING },
+    sideEffects: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+    warnings: { type: SchemaType.STRING },
+    keyWarning: { type: SchemaType.STRING },
+    riskScore: { type: SchemaType.STRING, enum: ["Low", "Medium", "High"] },
+    riskReason: { type: SchemaType.STRING },
+    whoShouldAvoid: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+    foodGuidance: { type: SchemaType.STRING },
+    alternatives: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
     interactionAnalysis: {
-      type: Type.OBJECT,
+      type: SchemaType.OBJECT,
       properties: {
-        severity: { type: Type.STRING, enum: ["Safe", "Warning", "Dangerous"] },
-        summary: { type: Type.STRING },
-        advice: { type: Type.STRING }
+        severity: { type: SchemaType.STRING, enum: ["Safe", "Warning", "Dangerous"] },
+        summary: { type: SchemaType.STRING },
+        advice: { type: SchemaType.STRING }
       },
       required: ["severity", "summary", "advice"]
     },
     effectTimeline: {
-        type: Type.OBJECT,
+        type: SchemaType.OBJECT,
         properties: {
-            onset: { type: Type.STRING },
-            peak: { type: Type.STRING },
-            duration: { type: Type.STRING }
+            onset: { type: SchemaType.STRING },
+            peak: { type: SchemaType.STRING },
+            duration: { type: SchemaType.STRING }
         },
         required: ["onset", "peak", "duration"]
     },
     lifestyleWarnings: {
-        type: Type.OBJECT,
+        type: SchemaType.OBJECT,
         properties: {
-            alcohol: { type: Type.BOOLEAN },
-            driving: { type: Type.BOOLEAN },
-            sleep: { type: Type.BOOLEAN }
+            alcohol: { type: SchemaType.BOOLEAN },
+            driving: { type: SchemaType.BOOLEAN },
+            sleep: { type: SchemaType.BOOLEAN }
         },
         required: ["alcohol", "driving", "sleep"]
     },
-    safetyRating: { type: Type.NUMBER },
+    safetyRating: { type: SchemaType.NUMBER },
     commonQuestions: {
-        type: Type.ARRAY,
+        type: SchemaType.ARRAY,
         items: {
-            type: Type.OBJECT,
+            type: SchemaType.OBJECT,
             properties: {
-                question: { type: Type.STRING },
-                answer: { type: Type.STRING }
+                question: { type: SchemaType.STRING },
+                answer: { type: SchemaType.STRING }
             },
             required: ["question", "answer"]
         }
     },
-    criticalWarning: { type: Type.STRING },
-    pregnancyWarning: { type: Type.STRING },
-    breastfeedingWarning: { type: Type.STRING },
-    ageAdvice: { type: Type.STRING },
-    expiryDate: { type: Type.STRING, description: "The expiry date visible on the packaging in YYYY-MM-DD format. If not visible, leave empty." }
+    criticalWarning: { type: SchemaType.STRING },
+    pregnancyWarning: { type: SchemaType.STRING },
+    breastfeedingWarning: { type: SchemaType.STRING },
+    ageAdvice: { type: SchemaType.STRING },
+    expiryDate: { type: SchemaType.STRING }
   },
   required: [
     "name", "medicationsFound", "description", "simpleExplanation", "childFriendlyExplanation", "uses", "dosage", 
@@ -76,42 +95,42 @@ const MEDICINE_SCHEMA: any = {
 };
 
 const DERMA_SCHEMA: any = {
-  type: Type.OBJECT,
+  type: SchemaType.OBJECT,
   properties: {
-    conditionName: { type: Type.STRING },
-    confidence: { type: Type.STRING, enum: ["High", "Medium", "Low"] },
-    severity: { type: Type.STRING, enum: ["Mild", "Moderate", "Severe"] },
-    description: { type: Type.STRING },
-    symptomsObserved: { type: Type.ARRAY, items: { type: Type.STRING } },
-    possibleCauses: { type: Type.ARRAY, items: { type: Type.STRING } },
-    homeRemedies: { type: Type.ARRAY, items: { type: Type.STRING } },
-    otcSuggestions: { type: Type.ARRAY, items: { type: Type.STRING } },
-    whenToSeeDoctor: { type: Type.STRING },
-    isContagious: { type: Type.BOOLEAN },
-    disclaimer: { type: Type.STRING }
+    conditionName: { type: SchemaType.STRING },
+    confidence: { type: SchemaType.STRING, enum: ["High", "Medium", "Low"] },
+    severity: { type: SchemaType.STRING, enum: ["Mild", "Moderate", "Severe"] },
+    description: { type: SchemaType.STRING },
+    symptomsObserved: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+    possibleCauses: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+    homeRemedies: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+    otcSuggestions: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+    whenToSeeDoctor: { type: SchemaType.STRING },
+    isContagious: { type: SchemaType.BOOLEAN },
+    disclaimer: { type: SchemaType.STRING }
   },
   required: ["conditionName", "severity", "description", "symptomsObserved", "homeRemedies", "otcSuggestions", "whenToSeeDoctor", "disclaimer"]
 };
 
 const DIET_SCHEMA: any = {
-    type: Type.OBJECT,
+    type: SchemaType.OBJECT,
     properties: {
-        title: { type: Type.STRING, description: "e.g. 7-Day Anti-Diabetic Meal Plan" },
-        overview: { type: Type.STRING, description: "Short summary of why this diet helps" },
-        avoidList: { type: Type.ARRAY, items: { type: Type.STRING } },
-        includeList: { type: Type.ARRAY, items: { type: Type.STRING } },
+        title: { type: SchemaType.STRING },
+        overview: { type: SchemaType.STRING },
+        avoidList: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+        includeList: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
         days: {
-            type: Type.ARRAY,
+            type: SchemaType.ARRAY,
             items: {
-                type: Type.OBJECT,
+                type: SchemaType.OBJECT,
                 properties: {
-                    day: { type: Type.STRING, description: "Day 1, Day 2..." },
-                    morning: { type: Type.STRING, description: "Early morning drink or snack" },
-                    breakfast: { type: Type.STRING },
-                    lunch: { type: Type.STRING },
-                    snack: { type: Type.STRING },
-                    dinner: { type: Type.STRING },
-                    tip: { type: Type.STRING }
+                    day: { type: SchemaType.STRING },
+                    morning: { type: SchemaType.STRING },
+                    breakfast: { type: SchemaType.STRING },
+                    lunch: { type: SchemaType.STRING },
+                    snack: { type: SchemaType.STRING },
+                    dinner: { type: SchemaType.STRING },
+                    tip: { type: SchemaType.STRING }
                 },
                 required: ["day", "morning", "breakfast", "lunch", "snack", "dinner", "tip"]
             }
@@ -120,21 +139,16 @@ const DIET_SCHEMA: any = {
     required: ["title", "overview", "avoidList", "includeList", "days"]
 };
 
-// Helper to parse errors into user-friendly messages
+// --- ERROR HELPER ---
 const getFriendlyErrorMessage = (error: any): string => {
     const msg = error.message || JSON.stringify(error) || "";
-    if (msg.includes("429") || msg.includes("RESOURCE_EXHAUSTED") || msg.includes("quota")) {
-        return "Daily Scan Limit Reached. Please try again tomorrow.";
-    }
-    if (msg.includes("500") || msg.includes("overloaded")) {
-        return "AI Service Busy. Please try again in a moment.";
-    }
-    if (msg.includes("invalid format")) {
-        return "Analysis failed due to an invalid AI response format. Please try your scan again.";
-    }
-    // Generic fallback
-    return "Analysis incomplete. Please try scanning again.";
+    if (msg.includes("429") || msg.includes("quota")) return "Daily Scan Limit Reached.";
+    if (msg.includes("500") || msg.includes("overloaded")) return "Server Busy. Please retry.";
+    if (msg.includes("API Key")) return "Technical Error: API Key Missing.";
+    return `Scan Failed: ${msg.substring(0, 40)}...`;
 };
+
+// --- MAIN FUNCTIONS ---
 
 export const analyzeMedicineImage = async (base64Images: string[], profile: PatientProfile): Promise<MedicineData> => {
   try {
@@ -143,51 +157,29 @@ export const analyzeMedicineImage = async (base64Images: string[], profile: Pati
       return { inlineData: { mimeType: "image/jpeg", data: cleanBase64 } };
     });
 
-    const promptText = {
-      text: `Analyze the medicine in these ${base64Images.length} images for a ${profile.ageGroup} (${profile.gender}). 
-      Language: ${profile.language}. 
-      Pregnancy: ${profile.isPregnant ? 'Yes' : 'No'}. 
-      Breastfeeding: ${profile.isBreastfeeding ? 'Yes' : 'No'}.`
-    };
-
-    const systemInstruction = `You are MediIQ AI, an expert OCR and medicine analysis system.
-    CRITICAL RULE: You MUST ALWAYS output a valid JSON object matching the provided schema. NEVER output plain text, markdown, or any other format.
-    
-    IMAGE QUALITY TOLERANCE:
-    - You are designed to read text from blurry, low-light, rotated, or partially obscured images. ATTEMPT to read the text no matter the quality.
-    - If you can read ANY part of the medicine name, use it. Make a best-effort guess.
-    
-    FAILURE SCENARIO:
-    - If an image is COMPLETELY unreadable (e.g., pure black, no distinguishable features), you MUST still return a valid JSON object.
-    - In this case, use "Unreadable Image" for the 'name' field, and fill other fields with generic safety warnings like "Consult a doctor as the medicine is unreadable." and set riskScore to "High".
-    
-    DO NOT DEVIATE. JSON output is mandatory.`;
+    const systemInstruction = `You are MediIQ AI. 
+    IMPORTANT: Ignore blurriness. ALWAYS try to read the text.
+    If you can see even partial text, guess the medicine name.
+    Output must be JSON.`;
 
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: MODEL_NAME,
       contents: {
-        parts: [...parts, promptText]
+        parts: [...parts, { text: `Analyze medicine for ${profile.ageGroup}. Lang: ${profile.language}.` }]
       },
       config: {
         responseMimeType: "application/json",
         responseSchema: MEDICINE_SCHEMA,
-        systemInstruction: systemInstruction
+        systemInstruction: systemInstruction,
+        safetySettings: SAFETY_SETTINGS
       }
     });
 
-    if (!response.text) {
-        throw new Error("AI returned an empty response.");
-    }
-    
-    try {
-        return JSON.parse(response.text) as MedicineData;
-    } catch (jsonError) {
-        console.error("JSON Parsing Error:", jsonError);
-        console.error("Raw AI Response:", response.text);
-        throw new Error("AI returned an invalid format. This might be a temporary issue.");
-    }
+    if (!response.text) throw new Error("Empty Response");
+    return JSON.parse(response.text) as MedicineData;
+
   } catch (error) {
-    console.error("Analysis Error:", error);
+    console.error("Scan Error:", error);
     throw new Error(getFriendlyErrorMessage(error));
   }
 };
@@ -198,130 +190,84 @@ export const analyzeSkinCondition = async (base64Image: string): Promise<DermaDa
     const parts = [{ inlineData: { mimeType: "image/jpeg", data: cleanBase64 } }];
 
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: {
-        parts: [...parts, { text: "Analyze this skin condition. Identify possible issues like Eczema, Acne, Ringworm, Hives, etc. Provide generic OTC treatment suggestions." }]
-      },
+      model: MODEL_NAME,
+      contents: { parts: [...parts, { text: "Analyze skin condition." }] },
       config: {
         responseMimeType: "application/json",
         responseSchema: DERMA_SCHEMA,
-        systemInstruction: "You are a specialized Dermatology Assistant AI. \n1. Analyze the skin image carefully.\n2. Identify the most probable condition (e.g., Eczema, Acne, Bug Bite, Contact Dermatitis).\n3. Suggest COMMON Over-The-Counter (OTC) creams or treatments (e.g., Hydrocortisone, Calamine, Salicylic Acid).\n4. If the image is NOT skin, return a conditionName of 'Not Skin'.\n5. ALWAYS include a strong disclaimer that you are an AI and they must see a doctor."
+        safetySettings: SAFETY_SETTINGS
       }
     });
 
-    if (response.text) {
-      return JSON.parse(response.text) as DermaData;
-    }
+    if (response.text) return JSON.parse(response.text) as DermaData;
     throw new Error("No response");
   } catch (error) {
-    console.error("Derma Analysis Error:", error);
-    throw new Error("Could not analyze skin condition. Please try again.");
+    throw new Error("Skin analysis failed.");
   }
 };
 
 export const generateDietPlan = async (medicineName: string, uses: string[], profile: PatientProfile): Promise<DietPlan> => {
     try {
-        const prompt = `Create a 7-Day Diet Plan for a patient taking ${medicineName}. 
-        The medicine suggests the user has issues related to: ${uses.join(', ')}.
-        Patient Profile: ${profile.ageGroup} ${profile.gender}, Language: ${profile.language}.
-        Region/Style: "Desi" Indian Diet (Use simple home cooked meals like Roti, Dal, Sabzi, Methi water etc).
-        If the condition is Diabetes, focus on low GI. If Cholesterol, focus on low oil/fat.
-        Format: JSON.`;
-
         const response = await ai.models.generateContent({
-            model: "gemini-3-flash-preview",
-            contents: prompt,
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: DIET_SCHEMA
+            model: MODEL_NAME,
+            contents: `7-Day Indian Diet Plan for ${medicineName}. JSON.`,
+            config: { 
+                responseMimeType: "application/json", 
+                responseSchema: DIET_SCHEMA,
+                safetySettings: SAFETY_SETTINGS 
             }
         });
-
-        if (response.text) {
-            return JSON.parse(response.text) as DietPlan;
-        }
+        if (response.text) return JSON.parse(response.text) as DietPlan;
         throw new Error("Failed to generate diet");
-    } catch (e) {
-        console.error("Diet Generation Error", e);
-        throw e;
-    }
+    } catch (e) { throw e; }
 };
 
 export const checkConditionSafety = async (medicineName: string, condition: string): Promise<string> => {
-  try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: `Safety check: Can I take ${medicineName} if I have ${condition}? Reply in 2 short sentences.`
-    });
-    return response.text || "Consult your doctor for specific advice.";
-  } catch (e) {
-    return "Unable to verify due to high traffic. Please ask your doctor.";
-  }
+    try {
+        const res = await ai.models.generateContent({
+            model: MODEL_NAME,
+            contents: `Can I take ${medicineName} with ${condition}? Short answer.`
+        });
+        return res.text || "Consult doctor.";
+    } catch (e) { return "Check with doctor."; }
 };
 
 export const getHealthTip = async (): Promise<string> => {
     try {
-        const response = await ai.models.generateContent({
-            model: "gemini-3-flash-preview",
-            contents: "Provide one short daily health tip about medicine safety (15 words max)."
-        });
-        return response.text || "Always check the expiry date of your medicines.";
-    } catch (e) {
-        return "Stay hydrated and consult your doctor regularly.";
-    }
-}
+        const res = await ai.models.generateContent({ model: MODEL_NAME, contents: "One short health tip." });
+        return res.text || "Stay hydrated.";
+    } catch (e) { return "Unavailable."; }
+};
 
 export const getDoctorAIResponse = async (history: ChatMessage[], scanHistory?: ScanHistoryItem[]): Promise<string> => {
   try {
     let contextData = "";
-    if (scanHistory && scanHistory.length > 0) {
-        const recentMedNames = scanHistory.slice(0, 5).map(item => item.medicineName).join(', ');
-        contextData = `
-        CONTEXT: The user's 5 most recent medicine scans are: [${recentMedNames}].
-        Use this scan history to answer questions about past medicines or potential interactions.
-        For example, if the user asks "can I take this with what I took yesterday?", refer to this list.
-        `;
+    if (scanHistory?.length) {
+        contextData = `User's recent scans: [${scanHistory.slice(0, 5).map(i => i.medicineName).join(', ')}].`;
     }
 
-    const MAX_HISTORY_MESSAGES = 10; // Reduced history to prevent overload
     const relevantHistory = history.filter(msg => msg.id !== 'welcome' && msg.content.trim() !== '');
-    const truncatedHistory = relevantHistory.slice(-MAX_HISTORY_MESSAGES);
-
-    const contents = truncatedHistory.map(msg => ({
+    const contents = relevantHistory.slice(-10).map(msg => ({
       role: msg.role === 'user' ? 'user' : 'model',
       parts: [{ text: msg.content }]
     }));
 
-    if (contents.length === 0) {
-        return "How can I help you today?";
-    }
+    if (contents.length === 0) return "How can I help you today?";
 
-    const systemInstruction = `You are 'MediIQ Doctor AI', a professional and empathetic medical assistant. 
-    ${contextData}
-    Help users understand symptoms, health conditions, and wellness. 
-    ALWAYS include a disclaimer that you are an AI and not a real doctor. 
-    If symptoms sound severe, strongly advise visiting an Emergency Room immediately. 
-    Keep responses concise and structured with bullet points where appropriate.`;
-    
-    // Using a single, reliable model. Removed complex retry logic for simplicity and stability.
-    try {
-        const response = await ai.models.generateContent({
-            model: "gemini-3-flash-preview", // Sticking to the more reliable and faster model
-            contents: contents,
-            config: { systemInstruction }
-        });
-        return response.text || "I apologize, I'm having trouble processing that right now. Could you rephrase?";
-    } catch (error: any) {
-        const errorMsg = JSON.stringify(error);
-        console.error("Doctor AI Critical Error:", errorMsg); 
-        if (errorMsg.includes("429") || errorMsg.includes("quota")) {
-            return "Server usage limit reached. Please come back tomorrow.";
+    const response = await ai.models.generateContent({
+        model: MODEL_NAME,
+        contents: contents,
+        config: { 
+            systemInstruction: `You are Doctor AI. ${contextData}. Keep answers short.`,
+            safetySettings: SAFETY_SETTINGS 
         }
-        // A more helpful error message for users
-        return "I am currently unavailable due to a technical issue. Please try again in a moment. If the problem continues, clearing the chat might help resolve it.";
-    }
+    });
+
+    return response?.text || "I'm having trouble connecting.";
+
   } catch (error) {
-    console.error("Doctor AI Top-Level Error:", error);
-    return "I'm currently unable to assist due to a connection issue. If this is an emergency, please call local medical services immediately.";
+    console.error("Doctor AI Error:", error);
+    return "Doctor AI is currently unavailable (API/Network Error). Please retry.";
   }
 };
+
