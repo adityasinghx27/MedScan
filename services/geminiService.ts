@@ -166,23 +166,32 @@ const getFriendlyErrorMessage = (error: any): string => {
 // Fallback logic for models
 const generateContentWithFallback = async (params: any): Promise<any> => {
     try {
-        // Try the primary model
+        // Try the primary model - Using 1.5-flash as it is the most STABLE for general keys
         const response = await ai.models.generateContent({
             ...params,
-            model: "gemini-3-flash-preview"
+            model: "gemini-1.5-flash"
         });
         return response;
     } catch (error: any) {
-        console.warn("Primary model failed, trying fallback...", error);
+        console.warn("Primary model (1.5-flash) failed, trying fallback...", error);
         try {
-            // Try fallback model (using 2.0-flash-exp as a reliable backup)
+            // Try fallback model - Using 1.5-pro as a reliable backup
             const response = await ai.models.generateContent({
                 ...params,
-                model: "gemini-2.0-flash-exp"
+                model: "gemini-1.5-pro"
             });
             return response;
         } catch (fallbackError) {
-            throw error; // Throw the original error if fallback also fails
+            // As a last resort, try legacy 1.0 pro if available, otherwise fail
+            try {
+                 const response = await ai.models.generateContent({
+                    ...params,
+                    model: "gemini-pro"
+                });
+                return response;
+            } catch (finalError) {
+                throw error; // Throw the original error if all fallbacks fail
+            }
         }
     }
 };
