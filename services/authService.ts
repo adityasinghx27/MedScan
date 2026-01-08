@@ -1,55 +1,53 @@
-import { auth, googleProvider } from "../firebaseConfig.ts";
-import { 
-  signInWithRedirect, 
-  getRedirectResult,
-  signOut, 
-  onAuthStateChanged, 
-  User as FirebaseUser 
-} from "firebase/auth";
+
 import { User } from "../types.ts";
 
+// MOCK AUTHENTICATION SERVICE
+// Replaces Firebase to ensure app works on any hosting platform (HopWeb, etc.) immediately.
+
+const STORAGE_KEY = 'mediScan_mock_user';
+
 export const loginWithGoogle = async (): Promise<void> => {
-  if (!auth) throw new Error("Auth not initialized");
+  // Simulate network delay for realism
+  await new Promise(resolve => setTimeout(resolve, 800));
   
-  try {
-    await signInWithRedirect(auth, googleProvider);
-  } catch (error: any) {
-    console.error("Login redirect failed", error);
-    alert(error.message);
-    throw error;
-  }
+  const mockUser: User = {
+    uid: 'user_' + Date.now().toString().slice(-6),
+    email: 'user@mediiq.app',
+    displayName: 'Demo User',
+    photoURL: null, // UI will show default avatar
+    isGuest: false,
+    joinedAt: Date.now()
+  };
+  
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(mockUser));
+  // Trigger a reload to update the app state cleanly
+  window.location.reload();
 };
 
 export const handleRedirectResult = async (): Promise<void> => {
-  if (!auth) return;
-  try {
-    await getRedirectResult(auth);
-  } catch (error: any) {
-    console.error("Redirect login failed", error);
-    alert(error.message);
-    throw error;
-  }
+  // No-op for mock auth
+  return Promise.resolve();
 };
 
 export const logout = async (): Promise<void> => {
-  if (!auth) return;
-  await signOut(auth);
+  localStorage.removeItem(STORAGE_KEY);
+  localStorage.removeItem('mediScan_is_guest');
+  window.location.reload();
 };
 
 export const subscribeToAuthChanges = (callback: (user: User | null) => void) => {
-  if (!auth) return () => {};
-  return onAuthStateChanged(auth, (firebaseUser: FirebaseUser | null) => {
-    if (firebaseUser) {
-      callback({
-        uid: firebaseUser.uid,
-        email: firebaseUser.email,
-        displayName: firebaseUser.displayName,
-        photoURL: firebaseUser.photoURL,
-        isGuest: false,
-        joinedAt: Date.now() 
-      });
-    } else {
+  // Check local storage for existing session
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (saved) {
+    try {
+      callback(JSON.parse(saved));
+    } catch (e) {
       callback(null);
     }
-  });
+  } else {
+    callback(null);
+  }
+  
+  // Return dummy unsubscribe function
+  return () => {};
 };

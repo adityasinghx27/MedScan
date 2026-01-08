@@ -1,25 +1,29 @@
 
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI, Type, HarmCategory, HarmBlockThreshold } from "@google/genai";
 import { MedicineData, PatientProfile, ChatMessage, DermaData, ScanHistoryItem, DietPlan } from "../types.ts";
 
 // Robustly retrieve API Key
 const getApiKey = (): string => {
-  // Check standard process.env (bundlers)
   if (typeof process !== "undefined" && process.env?.API_KEY) {
     return process.env.API_KEY;
   }
-  // Check window polyfill (browser runtime)
   if (typeof window !== "undefined" && (window as any).process?.env?.API_KEY) {
     return (window as any).process.env.API_KEY;
   }
-  console.warn("API Key not found in environment.");
   return "";
 };
 
 const apiKey = getApiKey();
 const ai = new GoogleGenAI({ apiKey });
 
-// Helper to clean JSON string (remove markdown fences if present)
+// SAFETY SETTINGS: Crucial for Medical Apps
+const SAFETY_SETTINGS = [
+  { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+  { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+  { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+  { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+];
+
 const cleanJsonString = (str: string): string => {
     if (!str) return "{}";
     let cleaned = str.trim();
@@ -31,7 +35,7 @@ const cleanJsonString = (str: string): string => {
     return cleaned;
 };
 
-// Define the medicine schema for structured JSON output as a plain object
+// Define the medicine schema
 const MEDICINE_SCHEMA: any = {
   type: Type.OBJECT,
   properties: {
@@ -93,7 +97,7 @@ const MEDICINE_SCHEMA: any = {
     pregnancyWarning: { type: Type.STRING },
     breastfeedingWarning: { type: Type.STRING },
     ageAdvice: { type: Type.STRING },
-    expiryDate: { type: Type.STRING, description: "The expiry date visible on the packaging in YYYY-MM-DD format. If not visible, leave empty." }
+    expiryDate: { type: Type.STRING, description: "YYYY-MM-DD format" }
   },
   required: [
     "name", "medicationsFound", "description", "simpleExplanation", "childFriendlyExplanation", "uses", "dosage", 
@@ -123,8 +127,8 @@ const DERMA_SCHEMA: any = {
 const DIET_SCHEMA: any = {
     type: Type.OBJECT,
     properties: {
-        title: { type: Type.STRING, description: "e.g. 7-Day Anti-Diabetic Meal Plan" },
-        overview: { type: Type.STRING, description: "Short summary of why this diet helps" },
+        title: { type: Type.STRING },
+        overview: { type: Type.STRING },
         avoidList: { type: Type.ARRAY, items: { type: Type.STRING } },
         includeList: { type: Type.ARRAY, items: { type: Type.STRING } },
         days: {
@@ -132,8 +136,8 @@ const DIET_SCHEMA: any = {
             items: {
                 type: Type.OBJECT,
                 properties: {
-                    day: { type: Type.STRING, description: "Day 1, Day 2..." },
-                    morning: { type: Type.STRING, description: "Early morning drink or snack" },
+                    day: { type: Type.STRING },
+                    morning: { type: Type.STRING },
                     breakfast: { type: Type.STRING },
                     lunch: { type: Type.STRING },
                     snack: { type: Type.STRING },
@@ -147,53 +151,67 @@ const DIET_SCHEMA: any = {
     required: ["title", "overview", "avoidList", "includeList", "days"]
 };
 
-// Helper to parse errors into user-friendly messages
 const getFriendlyErrorMessage = (error: any): string => {
     const msg = error.message || JSON.stringify(error) || "";
-    if (msg.includes("429") || msg.includes("RESOURCE_EXHAUSTED") || msg.includes("quota")) {
-        return "Daily Scan Limit Reached. Please try again tomorrow.";
-    }
-    if (msg.includes("500") || msg.includes("overloaded")) {
-        return "AI Service Busy. Please try again in a moment.";
-    }
-    if (msg.includes("invalid format")) {
-        return "Analysis failed due to an invalid AI response format. Please try your scan again.";
-    }
-    // Generic fallback
+    if (msg.includes("429") || msg.includes("RESOURCE_EXHAUSTED")) return "Daily Scan Limit Reached. Please try again tomorrow.";
+    if (msg.includes("500") || msg.includes("overloaded")) return "AI Service Busy. Please try again in a moment.";
+    if (msg.includes("404") || msg.includes("NOT_FOUND")) return "AI Model unavailable. Retrying with backup...";
+    if (msg.includes("invalid format")) return "Analysis failed. Please try a clearer image.";
     return "Analysis incomplete. Please try scanning again.";
 };
 
-// Fallback logic for models
+// Smart Fallback Strategy
 const generateContentWithFallback = async (params: any): Promise<any> => {
-    try {
-        // Try the primary model - Using 1.5-flash as it is the most STABLE for general keys
-        const response = await ai.models.generateContent({
-            ...params,
-            model: "gemini-1.5-flash"
-        });
-        return response;
-    } catch (error: any) {
-        console.warn("Primary model (1.5-flash) failed, trying fallback...", error);
+    // Add safety settings to ALL requests
+    const configWithSafety = {
+        ...params.config,
+        safetySettings: SAFETY_SETTINGS
+    };
+
+    // Determine if this is a vision request (has images) by checking inlineData structure
+    // Checking both direct params.contents or if it is an array of messages
+    let isVision = false;
+    if (params.contents && !Array.isArray(params.contents)) {
+        // Single request object
+        if (params.contents.parts) {
+            isVision = params.contents.parts.some((p: any) => p.inlineData);
+        }
+    } else if (Array.isArray(params.contents)) {
+        // Array of messages (Chat)
+        isVision = params.contents.some((c: any) => c.parts && c.parts.some((p: any) => p.inlineData));
+    }
+
+    // Define model priority list based on task
+    // 1.5-flash: Fast, Standard
+    // 2.0-flash-exp: New, Experimental (often works when 1.5 doesn't)
+    // 1.5-pro: High Quality
+    let models = ["gemini-1.5-flash", "gemini-2.0-flash-exp", "gemini-1.5-pro"];
+    
+    // If it's purely text (like Doctor AI), we can add the legacy gemini-pro as a final hail-mary
+    if (!isVision) {
+        models.push("gemini-pro");
+    }
+
+    let lastError = null;
+
+    for (const modelName of models) {
         try {
-            // Try fallback model - Using 1.5-pro as a reliable backup
+            console.log(`MediIQ: Attempting AI request with model: ${modelName}`);
             const response = await ai.models.generateContent({
                 ...params,
-                model: "gemini-1.5-pro"
+                model: modelName,
+                config: configWithSafety
             });
             return response;
-        } catch (fallbackError) {
-            // As a last resort, try legacy 1.0 pro if available, otherwise fail
-            try {
-                 const response = await ai.models.generateContent({
-                    ...params,
-                    model: "gemini-pro"
-                });
-                return response;
-            } catch (finalError) {
-                throw error; // Throw the original error if all fallbacks fail
-            }
+        } catch (error: any) {
+            console.warn(`MediIQ: Model ${modelName} failed:`, error.message);
+            lastError = error;
+            // Continue to next model in loop
         }
     }
+    
+    // If we get here, all models failed
+    throw lastError;
 };
 
 export const analyzeMedicineImage = async (base64Images: string[], profile: PatientProfile): Promise<MedicineData> => {
@@ -204,30 +222,18 @@ export const analyzeMedicineImage = async (base64Images: string[], profile: Pati
     });
 
     const promptText = {
-      text: `Analyze the medicine in these ${base64Images.length} images for a ${profile.ageGroup} (${profile.gender}). 
+      text: `Analyze the medicine in these images for a ${profile.ageGroup} (${profile.gender}). 
       Language: ${profile.language}. 
       Pregnancy: ${profile.isPregnant ? 'Yes' : 'No'}. 
       Breastfeeding: ${profile.isBreastfeeding ? 'Yes' : 'No'}.`
     };
 
     const systemInstruction = `You are MediIQ AI, an expert OCR and medicine analysis system.
-    CRITICAL RULE: You MUST ALWAYS output a valid JSON object matching the provided schema. NEVER output plain text, markdown, or any other format.
-    
-    IMAGE QUALITY TOLERANCE:
-    - You are designed to read text from blurry, low-light, rotated, or partially obscured images. ATTEMPT to read the text no matter the quality.
-    - If you can read ANY part of the medicine name, use it. Make a best-effort guess.
-    
-    FAILURE SCENARIO:
-    - If an image is COMPLETELY unreadable (e.g., pure black, no distinguishable features), you MUST still return a valid JSON object.
-    - In this case, use "Unreadable Image" for the 'name' field, and fill other fields with generic safety warnings like "Consult a doctor as the medicine is unreadable." and set riskScore to "High".
-    
-    DO NOT DEVIATE. JSON output is mandatory.`;
+    CRITICAL RULE: Output valid JSON only matching the schema.
+    If image is unreadable, set 'name' to 'Unreadable' and 'riskScore' to 'High'.`;
 
-    // Use fallback wrapper
     const response = await generateContentWithFallback({
-      contents: {
-        parts: [...parts, promptText]
-      },
+      contents: { parts: [...parts, promptText] },
       config: {
         responseMimeType: "application/json",
         responseSchema: MEDICINE_SCHEMA,
@@ -235,18 +241,8 @@ export const analyzeMedicineImage = async (base64Images: string[], profile: Pati
       }
     });
 
-    if (!response.text) {
-        throw new Error("AI returned an empty response.");
-    }
-    
-    try {
-        const cleanedText = cleanJsonString(response.text);
-        return JSON.parse(cleanedText) as MedicineData;
-    } catch (jsonError) {
-        console.error("JSON Parsing Error:", jsonError);
-        console.error("Raw AI Response:", response.text);
-        throw new Error("AI returned an invalid format. This might be a temporary issue.");
-    }
+    if (!response.text) throw new Error("Empty response");
+    return JSON.parse(cleanJsonString(response.text)) as MedicineData;
   } catch (error) {
     console.error("Analysis Error:", error);
     throw new Error(getFriendlyErrorMessage(error));
@@ -259,36 +255,24 @@ export const analyzeSkinCondition = async (base64Image: string): Promise<DermaDa
     const parts = [{ inlineData: { mimeType: "image/jpeg", data: cleanBase64 } }];
 
     const response = await generateContentWithFallback({
-      contents: {
-        parts: [...parts, { text: "Analyze this skin condition. Identify possible issues like Eczema, Acne, Ringworm, Hives, etc. Provide generic OTC treatment suggestions." }]
-      },
+      contents: { parts: [...parts, { text: "Analyze this skin condition. Identify possible issues." }] },
       config: {
         responseMimeType: "application/json",
         responseSchema: DERMA_SCHEMA,
-        systemInstruction: "You are a specialized Dermatology Assistant AI. \n1. Analyze the skin image carefully.\n2. Identify the most probable condition (e.g., Eczema, Acne, Bug Bite, Contact Dermatitis).\n3. Suggest COMMON Over-The-Counter (OTC) creams or treatments (e.g., Hydrocortisone, Calamine, Salicylic Acid).\n4. If the image is NOT skin, return a conditionName of 'Not Skin'.\n5. ALWAYS include a strong disclaimer that you are an AI and they must see a doctor."
+        systemInstruction: "You are a specialized Dermatology AI. Identify condition, suggest OTC meds, and advise seeing a doctor."
       }
     });
 
-    if (response.text) {
-      const cleanedText = cleanJsonString(response.text);
-      return JSON.parse(cleanedText) as DermaData;
-    }
+    if (response.text) return JSON.parse(cleanJsonString(response.text)) as DermaData;
     throw new Error("No response");
   } catch (error) {
-    console.error("Derma Analysis Error:", error);
-    throw new Error("Could not analyze skin condition. Please try again.");
+    throw new Error("Could not analyze skin condition.");
   }
 };
 
 export const generateDietPlan = async (medicineName: string, uses: string[], profile: PatientProfile): Promise<DietPlan> => {
     try {
-        const prompt = `Create a 7-Day Diet Plan for a patient taking ${medicineName}. 
-        The medicine suggests the user has issues related to: ${uses.join(', ')}.
-        Patient Profile: ${profile.ageGroup} ${profile.gender}, Language: ${profile.language}.
-        Region/Style: "Desi" Indian Diet (Use simple home cooked meals like Roti, Dal, Sabzi, Methi water etc).
-        If the condition is Diabetes, focus on low GI. If Cholesterol, focus on low oil/fat.
-        Format: JSON.`;
-
+        const prompt = `Create a 7-Day Diet Plan for a patient taking ${medicineName}. Issues: ${uses.join(', ')}. Profile: ${profile.ageGroup}. Style: Indian/Desi.`;
         const response = await generateContentWithFallback({
             contents: prompt,
             config: {
@@ -296,14 +280,9 @@ export const generateDietPlan = async (medicineName: string, uses: string[], pro
                 responseSchema: DIET_SCHEMA
             }
         });
-
-        if (response.text) {
-            const cleanedText = cleanJsonString(response.text);
-            return JSON.parse(cleanedText) as DietPlan;
-        }
+        if (response.text) return JSON.parse(cleanJsonString(response.text)) as DietPlan;
         throw new Error("Failed to generate diet");
     } catch (e) {
-        console.error("Diet Generation Error", e);
         throw e;
     }
 };
@@ -311,23 +290,22 @@ export const generateDietPlan = async (medicineName: string, uses: string[], pro
 export const checkConditionSafety = async (medicineName: string, condition: string): Promise<string> => {
   try {
     const response = await generateContentWithFallback({
-      contents: `Safety check: Can I take ${medicineName} if I have ${condition}? Reply in 2 short sentences.`
+      contents: `Can I take ${medicineName} if I have ${condition}? Short answer.`
     });
-    return response.text || "Consult your doctor for specific advice.";
+    return response.text || "Consult doctor.";
   } catch (e) {
-    return "Unable to verify due to high traffic. Please ask your doctor.";
+    return "Please ask your doctor.";
   }
 };
 
 export const getHealthTip = async (): Promise<string> => {
     try {
         const response = await generateContentWithFallback({
-            contents: "Provide one short daily health tip about medicine safety (15 words max)."
+            contents: "One short health tip about medicine safety (15 words max)."
         });
-        return response.text || "Always check the expiry date of your medicines.";
+        return response.text || "Check expiry dates.";
     } catch (e) {
-        console.error("Health Tip Error", e);
-        return "Stay hydrated and consult your doctor regularly.";
+        return "Stay hydrated.";
     }
 }
 
@@ -336,50 +314,28 @@ export const getDoctorAIResponse = async (history: ChatMessage[], scanHistory?: 
     let contextData = "";
     if (scanHistory && scanHistory.length > 0) {
         const recentMedNames = scanHistory.slice(0, 5).map(item => item.medicineName).join(', ');
-        contextData = `
-        CONTEXT: The user's 5 most recent medicine scans are: [${recentMedNames}].
-        Use this scan history to answer questions about past medicines or potential interactions.
-        For example, if the user asks "can I take this with what I took yesterday?", refer to this list.
-        `;
+        contextData = `User's recent scans: [${recentMedNames}]. Use this for context.`;
     }
 
-    const MAX_HISTORY_MESSAGES = 10; // Reduced history to prevent overload
-    const relevantHistory = history.filter(msg => msg.id !== 'welcome' && msg.content.trim() !== '');
-    const truncatedHistory = relevantHistory.slice(-MAX_HISTORY_MESSAGES);
-
-    const contents = truncatedHistory.map(msg => ({
+    const relevantHistory = history.filter(msg => msg.id !== 'welcome' && msg.content.trim() !== '').slice(-10);
+    const contents = relevantHistory.map(msg => ({
       role: msg.role === 'user' ? 'user' : 'model',
       parts: [{ text: msg.content }]
     }));
 
-    if (contents.length === 0) {
-        return "How can I help you today?";
-    }
+    if (contents.length === 0) return "How can I help?";
 
-    const systemInstruction = `You are 'MediIQ Doctor AI', a professional and empathetic medical assistant. 
-    ${contextData}
-    Help users understand symptoms, health conditions, and wellness. 
-    ALWAYS include a disclaimer that you are an AI and not a real doctor. 
-    If symptoms sound severe, strongly advise visiting an Emergency Room immediately. 
-    Keep responses concise and structured with bullet points where appropriate.`;
+    const systemInstruction = `You are MediIQ Doctor AI. ${contextData}
+    Provide helpful medical info. Always disclaim you are an AI. Advising on symptoms? Suggest a doctor.`;
     
-    // Using fallback logic for Doctor AI as well
-    try {
-        const response = await generateContentWithFallback({
-            contents: contents,
-            config: { systemInstruction }
-        });
-        return response.text || "I apologize, I'm having trouble processing that right now. Could you rephrase?";
-    } catch (error: any) {
-        const errorMsg = JSON.stringify(error);
-        console.error("Doctor AI Critical Error:", errorMsg); 
-        if (errorMsg.includes("429") || errorMsg.includes("quota")) {
-            return "Server usage limit reached. Please come back tomorrow.";
-        }
-        return "I am currently unavailable due to a technical issue. Please try again in a moment. If the problem continues, clearing the chat might help resolve it.";
-    }
-  } catch (error) {
-    console.error("Doctor AI Top-Level Error:", error);
-    return "I'm currently unable to assist due to a connection issue. If this is an emergency, please call local medical services immediately.";
+    const response = await generateContentWithFallback({
+        contents: contents,
+        config: { systemInstruction }
+    });
+    return response.text || "I'm having trouble responding. Please try again.";
+  } catch (error: any) {
+    console.error("Doctor AI Error:", error);
+    if (error.message?.includes("429")) return "I am busy right now. Please try again later.";
+    return "I cannot answer right now due to a connection issue.";
   }
 };
