@@ -1,3 +1,4 @@
+
 import React, { useRef, useState, useCallback } from 'react';
 import { analyzeMedicineImage } from '../services/geminiService';
 import { MedicineData, PatientProfile, AgeGroup, Gender, Language, FamilyMember } from '../types';
@@ -12,6 +13,10 @@ const Scanner: React.FC<ScannerProps> = ({ familyMembers, onScanComplete, onErro
   const [images, setImages] = useState<string[]>([]);
   const [analyzing, setAnalyzing] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const [showOfflineModal, setShowOfflineModal] = useState(false);
+  
+  // New Error State for better feedback
+  const [scanError, setScanError] = useState<string | null>(null);
   
   const [ageGroup, setAgeGroup] = useState<AgeGroup>('adult');
   const [gender, setGender] = useState<Gender>('male');
@@ -22,8 +27,23 @@ const Scanner: React.FC<ScannerProps> = ({ familyMembers, onScanComplete, onErro
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
 
-  const triggerCamera = () => cameraInputRef.current?.click();
-  const triggerGallery = () => galleryInputRef.current?.click();
+  const checkOnline = () => {
+      if (!navigator.onLine) {
+          setShowOfflineModal(true);
+          return false;
+      }
+      return true;
+  };
+
+  const triggerCamera = () => {
+      setScanError(null);
+      if (checkOnline()) cameraInputRef.current?.click();
+  };
+  
+  const triggerGallery = () => {
+      setScanError(null);
+      if (checkOnline()) galleryInputRef.current?.click();
+  };
 
   const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -43,15 +63,21 @@ const Scanner: React.FC<ScannerProps> = ({ familyMembers, onScanComplete, onErro
   };
 
   const startAnalysis = async (selectedProfile?: PatientProfile) => {
+    if (!checkOnline()) return;
     if (images.length === 0) return;
+    
     setShowForm(false);
+    setScanError(null);
     setAnalyzing(true);
     try {
       const profile = selectedProfile || { ageGroup, gender, isPregnant, isBreastfeeding, language };
       const data = await analyzeMedicineImage(images, profile);
       onScanComplete(data, profile);
+      setImages([]); // Clear images on success
     } catch (err: any) {
-      onError(err.message || "Scan failed. Ensure the text is clear and try again.");
+      // Set local error state for UI display
+      setScanError(err.message || "Scan failed. Ensure the text is clear and try again.");
+      console.error("Scan Process Failed:", err);
     } finally {
       setAnalyzing(false);
     }
@@ -172,6 +198,58 @@ const Scanner: React.FC<ScannerProps> = ({ familyMembers, onScanComplete, onErro
       <input type="file" accept="image/*" capture="environment" ref={cameraInputRef} onChange={handleFileChange} className="hidden" />
       <input type="file" accept="image/*" ref={galleryInputRef} onChange={handleFileChange} className="hidden" />
 
+      {/* Offline Modal */}
+      {showOfflineModal && (
+        <div className="fixed inset-0 z-[200] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-6 animate-fade-in">
+            <div className="bg-white rounded-[2.5rem] p-8 max-w-sm w-full text-center shadow-2xl animate-slide-up">
+                <div className="w-20 h-20 bg-amber-100 text-amber-500 rounded-full flex items-center justify-center text-3xl mx-auto mb-6">
+                    ⚡
+                </div>
+                <h3 className="text-2xl font-black text-slate-900 mb-2">Internet Required</h3>
+                <p className="text-slate-500 text-sm font-medium mb-8 leading-relaxed">
+                    AI Scanning needs an active internet connection to identify medicines. Please check your WiFi or Data.
+                </p>
+                <div className="space-y-3">
+                    <button 
+                        onClick={() => { setShowOfflineModal(false); if(navigator.onLine) alert("You are back online!"); }} 
+                        className="w-full bg-slate-900 text-white py-4 rounded-2xl font-bold text-sm uppercase tracking-widest shadow-lg"
+                    >
+                        I Turned it On
+                    </button>
+                    <button 
+                        onClick={() => setShowOfflineModal(false)} 
+                        className="w-full text-slate-400 py-3 font-bold text-xs uppercase tracking-widest hover:text-slate-600"
+                    >
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+      )}
+
+      {/* Error Alert Overlay */}
+      {scanError && (
+        <div className="fixed inset-0 z-[150] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-6 animate-fade-in">
+             <div className="bg-white rounded-[2rem] p-6 max-w-sm w-full shadow-2xl border border-rose-100 animate-bounce-short">
+                <div className="flex items-start space-x-4">
+                    <div className="w-12 h-12 bg-rose-100 rounded-full flex items-center justify-center text-2xl shrink-0">
+                        ⚠️
+                    </div>
+                    <div>
+                        <h4 className="text-lg font-black text-slate-900">Analysis Failed</h4>
+                        <p className="text-sm text-slate-500 font-medium leading-relaxed mt-1">{scanError}</p>
+                    </div>
+                </div>
+                <button 
+                    onClick={() => setScanError(null)}
+                    className="w-full bg-slate-100 text-slate-600 font-bold py-3 mt-6 rounded-xl text-xs uppercase tracking-widest hover:bg-slate-200"
+                >
+                    Dismiss
+                </button>
+             </div>
+        </div>
+      )}
+
       {analyzing ? (
         <div className="text-center p-12 bg-white rounded-[4rem] shadow-2xl w-full max-sm mx-4 relative overflow-hidden mt-10 border border-slate-50 animate-glow-teal">
             <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-teal-400 via-emerald-500 to-teal-400 animate-[shimmer_2s_infinite]"></div>
@@ -263,7 +341,7 @@ const Scanner: React.FC<ScannerProps> = ({ familyMembers, onScanComplete, onErro
                 <div className="absolute inset-0 bg-med-pattern opacity-10"></div>
                 <div className="absolute -top-4 -right-4 text-white/5 text-9xl animate-floating">🩺</div>
 
-                {/* Scan Animation Line (Added to Gallery as requested) */}
+                {/* Scan Animation Line */}
                 <div className="animate-scan"></div>
                 
                 <div className="relative z-10 p-8 px-10 flex items-center justify-between">

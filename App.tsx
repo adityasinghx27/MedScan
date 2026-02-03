@@ -14,6 +14,7 @@ import LoginScreen from './components/LoginScreen.tsx';
 import ExpiryCabinet from './components/ExpiryCabinet.tsx';
 import EmergencyWallpaper from './components/EmergencyWallpaper.tsx';
 import DermaScanner from './components/DermaScanner.tsx';
+import MedicineSearch from './components/MedicineSearch.tsx';
 import { MedicineData, AppView, Reminder, PatientProfile, ScanHistoryItem, FamilyMember, User, CabinetItem, ChatMessage } from './types.ts';
 import { getHealthTip } from './services/geminiService.ts';
 import { subscribeToAuthChanges, loginWithGoogle, logout, handleRedirectResult } from './services/authService.ts';
@@ -44,6 +45,7 @@ const App: React.FC = () => {
   const [activeAlarm, setActiveAlarm] = useState<Reminder | null>(null);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(() => Notification.permission);
   const [isLoadingData, setIsLoadingData] = useState(true);
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
 
   // Helper: Generate Storage Key based on User
   const getStorageKey = useCallback((baseKey: string) => {
@@ -56,6 +58,20 @@ const App: React.FC = () => {
     }
     return `mediScan_${baseKey}`; // Fallback for legacy
   }, [currentUser, isGuest]);
+
+  // -- Network Status Listener --
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+    
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    
+    return () => {
+        window.removeEventListener('online', handleOnline);
+        window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   // -- Initialization & Auth --
   useEffect(() => {
@@ -293,7 +309,17 @@ const App: React.FC = () => {
             </header>
             
             <div className="px-6 pb-32 pt-6 max-w-lg mx-auto">
-                {healthTip && (
+                {isOffline && (
+                    <div className="mb-6 bg-slate-800 text-white p-4 rounded-2xl flex items-center shadow-lg animate-fade-in">
+                        <svg className="w-6 h-6 mr-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 5.636a9 9 0 010 12.728m0 0l-2.829-2.829m2.829 2.829L21 21M15.536 8.464a5 5 0 010 7.072m0 0l-2.829-2.829m-4.243 2.829a4.978 4.978 0 01-1.414-2.83m-1.414 5.658a9 9 0 01-2.167-9.238m7.824 2.167a1 1 0 111.414 1.414m-1.414-1.414L3 3m8.293 8.293l1.414 1.414" /></svg>
+                        <div>
+                            <h4 className="text-sm font-bold">You are Offline</h4>
+                            <p className="text-[10px] text-slate-400">Scanner & Doctor AI require internet. Local history & alarms are active.</p>
+                        </div>
+                    </div>
+                )}
+
+                {healthTip && !isOffline && (
                      <div className="mb-10 p-6 bg-white border border-teal-50/50 rounded-[2.5rem] flex items-start shadow-xl shadow-teal-900/5 animate-slide-up hover:shadow-teal-900/10 transition-shadow">
                         <div className="w-12 h-12 bg-teal-50 rounded-2xl flex items-center justify-center mr-4 shrink-0 text-2xl shadow-inner">💊</div>
                         <div>
@@ -306,6 +332,14 @@ const App: React.FC = () => {
                 <Scanner familyMembers={familyMembers} onScanComplete={handleScanComplete} onError={(msg) => alert(msg)} />
                 
                 <div className="grid grid-cols-2 gap-4 mt-6">
+                    <button onClick={() => setCurrentView(AppView.SEARCH)} className="col-span-2 bg-blue-600 text-white p-5 rounded-[2rem] shadow-xl shadow-blue-600/20 border border-blue-500 flex items-center justify-center space-x-3 group active:scale-95 transition-all">
+                         <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center text-xl">🔍</div>
+                         <div className="text-left">
+                            <h3 className="font-bold text-sm leading-tight">Search & Compare</h3>
+                            <p className="text-[8px] text-blue-200 font-black uppercase tracking-widest mt-0.5">Type Names</p>
+                         </div>
+                    </button>
+
                     <button onClick={() => setCurrentView(AppView.CABINET)} className="bg-white text-slate-900 p-5 rounded-[2rem] shadow-xl shadow-slate-200/50 border border-slate-100 flex flex-col items-center justify-center group active:scale-95 transition-all">
                         <div className="w-10 h-10 bg-indigo-50 text-indigo-500 rounded-2xl flex items-center justify-center text-xl mb-3">🗄️</div>
                         <h3 className="font-bold text-sm leading-tight">Virtual Cabinet</h3>
@@ -338,7 +372,7 @@ const App: React.FC = () => {
                     </button>
                 </div>
 
-                {!isPremium && (
+                {!isPremium && !isOffline && (
                     <div onClick={() => setShowPremiumModal(true)} className="mt-6 bg-slate-900 text-white p-7 rounded-[3rem] shadow-2xl shadow-slate-900/20 flex justify-between items-center cursor-pointer transform transition-all hover:translate-y-[-2px] active:scale-95 group relative overflow-hidden border border-slate-800">
                         <div className="absolute inset-0 bg-gradient-to-br from-slate-800 to-slate-900 z-0"></div>
                         <div className="absolute -top-12 -right-12 w-48 h-48 bg-white opacity-[0.05] rounded-full blur-3xl group-hover:opacity-10 transition-opacity"></div>
@@ -352,6 +386,8 @@ const App: React.FC = () => {
             </div>
           </div>
         );
+      case AppView.SEARCH:
+          return <MedicineSearch onBack={() => setCurrentView(AppView.HOME)} />;
       case AppView.REMINDERS:
         return <div className="pb-24 bg-slate-50 min-h-screen"><Reminders reminders={reminders} addReminder={addReminder} updateReminder={updateReminder} deleteReminder={deleteReminder} toggleReminder={toggleReminder} notificationPermission={notificationPermission} onRequestNotificationPermission={requestNotificationPermission} /></div>;
       case AppView.CABINET:
@@ -418,7 +454,7 @@ const App: React.FC = () => {
                     { view: AppView.DOCTOR_AI, icon: "M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z", label: "Doctor" },
                     { view: AppView.PROFILE, icon: "M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14", label: "Profile" }
                 ].map((item) => {
-                    const isActive = currentView === item.view || (item.view === AppView.HOME && (currentView === AppView.SCANNER || currentView === AppView.DERMA));
+                    const isActive = currentView === item.view || (item.view === AppView.HOME && (currentView === AppView.SCANNER || currentView === AppView.DERMA || currentView === AppView.SEARCH));
                     return (
                         <button key={item.label} onClick={() => setCurrentView(item.view)} className={`flex flex-col items-center justify-center w-14 py-1 rounded-xl transition-all duration-300 ${isActive ? 'text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}>
                             <div className={`mb-1 transition-all duration-300 ${isActive ? 'bg-slate-900 text-white p-2.5 rounded-2xl shadow-lg' : ''}`}>

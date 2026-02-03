@@ -5,136 +5,118 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <title>MediIQ</title>
+    
+    <!-- Critical Error Handler for APKs -->
     <script>
+      window.onerror = function(msg, url, line, col, error) {
+        var root = document.getElementById('root');
+        if (root) {
+          // Don't overwrite if React is already mounted, just log or show toast if possible.
+          // For critical startup errors only:
+          if (root.innerHTML.includes('Starting Engine') || root.innerHTML === '') {
+             root.innerHTML = `
+              <div style="padding: 20px; background: #fff; color: #000; font-family: sans-serif; height: 100vh; display: flex; flex-direction: column; justify-content: center; text-align: center;">
+                <h2 style="color: #ef4444; font-size: 20px; margin-bottom: 10px;">Startup Error</h2>
+                <p style="color: #64748b; font-size: 14px; margin-bottom: 20px;">The app failed to load resources.</p>
+                <div style="background: #f1f5f9; padding: 10px; border-radius: 8px; text-align: left; font-size: 12px; overflow: auto; max-height: 200px; margin-bottom: 20px;">
+                  <strong>Message:</strong> ${msg}<br/>
+                  <strong>Line:</strong> ${line}<br/>
+                  <strong>URL:</strong> ${url}
+                </div>
+                <button onclick="window.location.reload()" style="background: #0d9488; color: white; border: none; padding: 12px 24px; border-radius: 8px; font-size: 16px;">Retry Connection</button>
+              </div>
+            `;
+          }
+        }
+        return false;
+      };
+
       // Polyfill process IMMEDIATELY before any modules load
-      // CRITICAL: Injecting the API key here to make the app functional in this environment.
       window.process = window.process || { env: { API_KEY: "AIzaSyCiAA2DhF7VlNKDBN5dWVl3ko4GqOoEYtw" } };
-      console.log("System: Process polyfill initialized with API key.");
+      console.log("System: Process polyfill initialized.");
+
+      // Register Service Worker safely
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('./sw.js')
+            .then(reg => console.log('SW registered'))
+            .catch(err => console.log('SW failed', err));
+        });
+      }
     </script>
+
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
     <style>
-      :root {
-        --primary: #0d9488;
-        --secondary: #10b981;
-        --surface: #ffffff;
-        --background: #f8fafc;
-      }
-      
+      :root { --primary: #0d9488; }
       body { 
         font-family: 'Plus Jakarta Sans', sans-serif; 
         background-color: #fcfdfe;
         color: #1e293b;
+        margin: 0;
         -webkit-tap-highlight-color: transparent;
-        overscroll-behavior-y: none;
       }
-      
-      /* Smooth Scrolling */
-      html { scroll-behavior: smooth; }
-
-      /* Hide Scrollbar */
-      .hide-scrollbar::-webkit-scrollbar { display: none; }
-      .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-
-      /* Animations */
-      @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-      .animate-fade-in { animation: fadeIn 0.4s ease-out forwards; }
-      
-      @keyframes slideUp { from { transform: translateY(24px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-      .animate-slide-up { animation: slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-
-      /* Steady Glow Effects */
-      @keyframes glow-teal {
-        0%, 100% { box-shadow: 0 0 20px rgba(20, 184, 166, 0.3), 0 0 40px rgba(20, 184, 166, 0.1); }
-        50% { box-shadow: 0 0 35px rgba(20, 184, 166, 0.5), 0 0 70px rgba(20, 184, 166, 0.25); }
+      /* Simple spinner for initial load */
+      .initial-loader {
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #0d9488;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 1s linear infinite;
+        margin: 20px auto;
       }
-      .animate-glow-teal {
-        animation: glow-teal 3s ease-in-out infinite;
-      }
-
-      @keyframes glow-blue {
-        0%, 100% { box-shadow: 0 0 20px rgba(79, 70, 229, 0.3), 0 0 40px rgba(79, 70, 229, 0.1); }
-        50% { box-shadow: 0 0 35px rgba(79, 70, 229, 0.5), 0 0 70px rgba(79, 70, 229, 0.25); }
-      }
-      .animate-glow-blue {
-        animation: glow-blue 3s ease-in-out infinite;
-      }
-
-      /* Scanning Line Animation */
-      @keyframes scan-line {
-        0% { top: 0%; opacity: 0; }
-        10% { opacity: 0.8; }
-        50% { opacity: 1; height: 3px; }
-        90% { opacity: 0.8; }
-        100% { top: 100%; opacity: 0; }
-      }
-      .animate-scan {
-        position: absolute;
-        left: 0;
-        width: 100%;
-        height: 2px;
-        background: linear-gradient(to right, transparent, rgba(255,255,255,0.9), transparent);
-        box-shadow: 0 0 15px rgba(255,255,255,0.7), 0 0 35px rgba(255,255,255,0.4), 0 0 50px rgba(255,255,255,0.2);
-        animation: scan-line 2.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-        z-index: 40;
-      }
-
-      @keyframes heartbeat {
-        0%, 100% { transform: scale(1); opacity: 1; }
-        50% { transform: scale(1.15); opacity: 0.8; }
-      }
-      .animate-heartbeat { animation: heartbeat 1.5s ease-in-out infinite; }
-      
-      @keyframes pulse-soft {
-        0%, 100% { transform: scale(1); opacity: 0.8; }
-        50% { transform: scale(1.05); opacity: 1; }
-      }
-      .animate-pulse-soft { animation: pulse-soft 2s ease-in-out infinite; }
-
-      /* Medical Grid Pattern */
-      .bg-med-pattern {
-        background-image: radial-gradient(rgba(255, 255, 255, 0.1) 1.5px, transparent 1.5px);
-        background-size: 24px 24px;
-      }
-
-      @keyframes floating {
-        0%, 100% { transform: translateY(0px) rotate(0deg); }
-        50% { transform: translateY(-10px) rotate(5deg); }
-      }
-      .animate-floating { animation: floating 4s ease-in-out infinite; }
-
-      .bg-medical-mesh {
-        background-color: #fcfdfe;
-        background-image: radial-gradient(at 0% 0%, hsla(170, 75%, 95%, 1) 0, transparent 50%),
-                          radial-gradient(at 100% 0%, hsla(190, 80%, 95%, 1) 0, transparent 50%);
-      }
+      @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
-  <script type="importmap">
-{
-  "imports": {
-    "@google/genai": "https://esm.sh/@google/genai@^1.34.0",
-    "react-dom/client": "https://esm.sh/react-dom@^19.2.3/client",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "react/": "https://esm.sh/react@^19.2.3/",
-    "react": "https://esm.sh/react@^19.2.3",
-    "firebase/app": "https://esm.sh/firebase@10.13.1/app",
-    "firebase/analytics": "https://esm.sh/firebase@10.13.1/analytics",
-    "firebase/auth": "https://esm.sh/firebase@10.13.1/auth",
-    "firebase/": "https://esm.sh/firebase@10.13.1/",
-    "qrcode": "https://esm.sh/qrcode@1.5.3"
-  }
-}
-</script>
-</head>
-  <body class="bg-medical-mesh">
+
+    <script type="importmap">
+    {
+      "imports": {
+        "@google/generative-ai": "https://esm.sh/@google/generative-ai@0.21.0",
+        "react-dom/client": "https://esm.sh/react-dom@^19.2.3/client",
+        "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+        "react/": "https://esm.sh/react@^19.2.3/",
+        "react": "https://esm.sh/react@^19.2.3",
+        "firebase/app": "https://esm.sh/firebase@10.13.1/app",
+        "firebase/analytics": "https://esm.sh/firebase@10.13.1/analytics",
+        "firebase/auth": "https://esm.sh/firebase@10.13.1/auth",
+        "firebase/": "https://esm.sh/firebase@10.13.1/",
+        "qrcode": "https://esm.sh/qrcode@1.5.3"
+      }
+    }
+    </script>
+  </head>
+  <body>
     <div id="root">
-      <div style="display: flex; justify-content: center; align-items: center; height: 100vh; font-family: sans-serif; color: #64748b;">
-        <div style="text-align: center;">
-          <h2 style="font-weight: 800; color: #0d9488;">MediIQ</h2>
-          <p>Initialising medical AI...</p>
-        </div>
+      <!-- Default Loading UI (Visible before React loads) -->
+      <div style="height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #fcfdfe;">
+        <div class="initial-loader"></div>
+        <h2 style="color: #0d9488; font-weight: 800; font-size: 24px; margin-top: 10px;">MediIQ</h2>
+        <p style="color: #94a3b8; font-size: 12px; margin-top: 5px;">Starting Engine...</p>
+        <p style="color: #cbd5e1; font-size: 10px; margin-top: 20px;">Requires Internet Connection</p>
       </div>
     </div>
+    
+    <!-- App Entry -->
     <script type="module" src="index.tsx"></script>
+
+    <!-- Fallback Timeout Script -->
+    <script>
+      setTimeout(function() {
+        var root = document.getElementById('root');
+        // If the loader is still present after 8 seconds, assume connection fail
+        if (root && root.innerHTML.includes('Starting Engine')) {
+           root.innerHTML = `
+            <div style="padding: 30px; text-align: center; font-family: sans-serif; height: 100vh; display: flex; flex-direction: column; justify-content: center;">
+              <h1 style="color: #0d9488;">Network Issue</h1>
+              <p style="color: #64748b;">The app is taking too long to load.</p>
+              <p style="font-size: 12px; color: #94a3b8; margin: 10px 0;">Please check your internet connection and try again. This app requires internet to fetch core libraries.</p>
+              <button onclick="window.location.reload()" style="margin-top:20px; background: #0d9488; color: white; padding: 15px; border:none; border-radius: 12px; font-weight: bold;">Tap to Retry</button>
+            </div>
+           `;
+        }
+      }, 8000);
+    </script>
   </body>
 </html>

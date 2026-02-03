@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { FamilyMember, AgeGroup, Gender, Language, User } from '../types';
 
@@ -11,31 +12,64 @@ interface ProfileProps {
 }
 
 const Profile: React.FC<ProfileProps> = ({ isPremium, familyMembers, setFamilyMembers, user, onLogin, onLogout }) => {
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [newName, setNewName] = useState('');
-  const [newAge, setNewAge] = useState<AgeGroup>('adult');
-  const [newGender, setNewGender] = useState<Gender>('male');
-  const [newLang, setNewLang] = useState<Language>('english');
+  const [showModal, setShowModal] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  
+  const [name, setName] = useState('');
+  const [age, setAge] = useState<AgeGroup>('adult');
+  const [gender, setGender] = useState<Gender>('male');
+  const [lang, setLang] = useState<Language>('english');
 
-  const addMember = () => {
-    if (!newName) return;
-    const avatars = ['🧑', '👧', '👶', '👵', '👴', '👲'];
-    const newMember: FamilyMember = {
-      id: crypto.randomUUID(),
-      name: newName,
-      ageGroup: newAge,
-      gender: newGender,
-      isPregnant: false,
-      isBreastfeeding: false,
-      language: newLang,
-      avatar: avatars[Math.floor(Math.random() * avatars.length)]
-    };
-    setFamilyMembers([...familyMembers, newMember]);
-    setShowAddModal(false);
-    setNewName('');
+  const openAddModal = () => {
+    setEditingId(null);
+    setName('');
+    setAge('adult');
+    setGender('male');
+    setLang('english');
+    setShowModal(true);
   };
 
-  const removeMember = (id: string) => {
+  const openEditModal = (member: FamilyMember) => {
+    setEditingId(member.id);
+    setName(member.name);
+    setAge(member.ageGroup);
+    setGender(member.gender);
+    setLang(member.language);
+    setShowModal(true);
+  };
+
+  const handleSave = () => {
+    if (!name) return;
+    
+    if (editingId) {
+        // Update existing
+        const updatedMembers = familyMembers.map(m => {
+            if (m.id === editingId) {
+                return { ...m, name, ageGroup: age, gender, language: lang };
+            }
+            return m;
+        });
+        setFamilyMembers(updatedMembers);
+    } else {
+        // Add new
+        const avatars = ['🧑', '👧', '👶', '👵', '👴', '👲'];
+        const newMember: FamilyMember = {
+          id: crypto.randomUUID(),
+          name,
+          ageGroup: age,
+          gender,
+          isPregnant: false,
+          isBreastfeeding: false,
+          language: lang,
+          avatar: avatars[Math.floor(Math.random() * avatars.length)]
+        };
+        setFamilyMembers([...familyMembers, newMember]);
+    }
+    setShowModal(false);
+  };
+
+  const removeMember = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
     if (id === 'me') return;
     if (confirm("Remove this profile?")) {
       setFamilyMembers(familyMembers.filter(m => m.id !== id));
@@ -80,41 +114,70 @@ const Profile: React.FC<ProfileProps> = ({ isPremium, familyMembers, setFamilyMe
         <div className="mb-8">
             <div className="flex justify-between items-center mb-4">
               <h4 className="text-sm font-black text-slate-900 uppercase tracking-wider">Family Profiles</h4>
-              <button onClick={() => setShowAddModal(true)} className="text-[10px] font-black text-teal-600 uppercase tracking-widest bg-teal-50 px-3 py-1.5 rounded-lg border border-teal-100">+ Add</button>
+              <button onClick={openAddModal} className="text-[10px] font-black text-teal-600 uppercase tracking-widest bg-teal-50 px-3 py-1.5 rounded-lg border border-teal-100">+ Add</button>
             </div>
             <div className="grid grid-cols-2 gap-4">
               {familyMembers.map(member => (
-                <div key={member.id} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm relative group">
+                <div 
+                  key={member.id} 
+                  onClick={() => openEditModal(member)}
+                  className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm relative group cursor-pointer hover:border-teal-200 transition-colors"
+                >
                   <div className="text-3xl mb-2">{member.avatar}</div>
                   <h5 className="font-bold text-slate-800 text-sm truncate">{member.name}</h5>
                   <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mt-1">{member.ageGroup} • {member.gender}</p>
-                  {member.id !== 'me' && (
-                    <button onClick={() => removeMember(member.id)} className="absolute top-2 right-2 p-1 text-slate-200 hover:text-rose-500 opacity-0 group-hover:opacity-100">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                  <p className="text-[8px] font-black text-slate-300 uppercase tracking-widest mt-0.5">{member.language}</p>
+                  
+                  <div className="absolute top-2 right-2 flex space-x-1">
+                    <button onClick={(e) => { e.stopPropagation(); openEditModal(member); }} className="p-1 text-slate-200 hover:text-teal-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
                     </button>
-                  )}
+                    {member.id !== 'me' && (
+                      <button onClick={(e) => removeMember(member.id, e)} className="p-1 text-slate-200 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
         </div>
 
-        {showAddModal && (
+        {showModal && (
           <div className="fixed inset-0 z-[200] bg-slate-900/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
             <div className="bg-white rounded-t-[2.5rem] sm:rounded-[2.5rem] w-full max-w-sm p-8 shadow-2xl animate-slide-up">
-              <h3 className="text-xl font-black text-slate-900 mb-6">New Profile</h3>
-              <div className="space-y-6">
-                <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="e.g. Grandma" className="w-full bg-slate-50 p-4 rounded-xl border border-slate-100 font-bold" />
-                <div className="grid grid-cols-2 gap-4">
-                  <select value={newAge} onChange={(e) => setNewAge(e.target.value as AgeGroup)} className="bg-slate-50 p-4 rounded-xl font-bold">
-                    <option value="child">Child</option><option value="adult">Adult</option><option value="senior">Senior</option>
-                  </select>
-                  <select value={newGender} onChange={(e) => setNewGender(e.target.value as Gender)} className="bg-slate-50 p-4 rounded-xl font-bold">
-                    <option value="male">Male</option><option value="female">Female</option>
-                  </select>
+              <h3 className="text-xl font-black text-slate-900 mb-6">{editingId ? 'Edit Profile' : 'New Profile'}</h3>
+              <div className="space-y-5">
+                <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Name</label>
+                    <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Grandma" className="w-full bg-slate-50 p-4 rounded-xl border border-slate-100 font-bold" />
                 </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Age</label>
+                    <select value={age} onChange={(e) => setAge(e.target.value as AgeGroup)} className="w-full bg-slate-50 p-4 rounded-xl font-bold border border-slate-100">
+                      <option value="child">Child</option><option value="adult">Adult</option><option value="senior">Senior</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Gender</label>
+                    <select value={gender} onChange={(e) => setGender(e.target.value as Gender)} className="w-full bg-slate-50 p-4 rounded-xl font-bold border border-slate-100">
+                      <option value="male">Male</option><option value="female">Female</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">AI Language</label>
+                    <select value={lang} onChange={(e) => setLang(e.target.value as Language)} className="w-full bg-slate-50 p-4 rounded-xl font-bold border border-slate-100">
+                      <option value="english">English</option><option value="hindi">Hindi</option><option value="hinglish">Hinglish</option>
+                    </select>
+                </div>
+
                 <div className="flex space-x-3 pt-4">
-                  <button onClick={() => setShowAddModal(false)} className="flex-1 bg-slate-100 text-slate-500 py-4 rounded-2xl font-black text-xs uppercase">Cancel</button>
-                  <button onClick={addMember} className="flex-[2] bg-teal-600 text-white py-4 rounded-2xl font-black text-xs uppercase shadow-lg shadow-teal-600/20">Save</button>
+                  <button onClick={() => setShowModal(false)} className="flex-1 bg-slate-100 text-slate-500 py-4 rounded-2xl font-black text-xs uppercase">Cancel</button>
+                  <button onClick={handleSave} className="flex-[2] bg-teal-600 text-white py-4 rounded-2xl font-black text-xs uppercase shadow-lg shadow-teal-600/20">Save Profile</button>
                 </div>
               </div>
             </div>

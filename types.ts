@@ -159,7 +159,8 @@ export enum AppView {
   INFO = 'INFO',
   CABINET = 'CABINET',
   EMERGENCY = 'EMERGENCY',
-  DERMA = 'DERMA'
+  DERMA = 'DERMA',
+  SEARCH = 'SEARCH'
 }
 
 export interface AnalysisState {

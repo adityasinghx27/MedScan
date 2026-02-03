@@ -14,6 +14,14 @@ const DermaScanner: React.FC<DermaScannerProps> = ({ onBack }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
+  const checkOnline = () => {
+    if (!navigator.onLine) {
+        alert("Internet Required for Derma Analysis. Please turn on mobile data or Wi-Fi.");
+        return false;
+    }
+    return true;
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -24,6 +32,7 @@ const DermaScanner: React.FC<DermaScannerProps> = ({ onBack }) => {
   };
 
   const startAnalysis = async () => {
+    if (!checkOnline()) return;
     if (!image) return;
     setAnalyzing(true);
     try {
@@ -150,10 +159,10 @@ const DermaScanner: React.FC<DermaScannerProps> = ({ onBack }) => {
                             <p className="text-slate-400 text-xs px-8 leading-relaxed">Take a clear photo of the rash, pimple, or mark for AI analysis.</p>
                         </div>
                         <div className="grid grid-cols-2 gap-4 w-full pt-4">
-                            <button onClick={() => cameraInputRef.current?.click()} className="bg-slate-900 text-white py-4 rounded-2xl font-bold text-sm shadow-lg hover:bg-slate-800 transition-colors">
+                            <button onClick={() => checkOnline() && cameraInputRef.current?.click()} className="bg-slate-900 text-white py-4 rounded-2xl font-bold text-sm shadow-lg hover:bg-slate-800 transition-colors">
                                 Camera 📸
                             </button>
-                            <button onClick={() => fileInputRef.current?.click()} className="bg-white border-2 border-slate-100 text-slate-600 py-4 rounded-2xl font-bold text-sm hover:border-violet-200 hover:text-violet-600 transition-colors">
+                            <button onClick={() => checkOnline() && fileInputRef.current?.click()} className="bg-white border-2 border-slate-100 text-slate-600 py-4 rounded-2xl font-bold text-sm hover:border-violet-200 hover:text-violet-600 transition-colors">
                                 Gallery 🖼️
                             </button>
                         </div>
