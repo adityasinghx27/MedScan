@@ -32,20 +32,21 @@
       };
 
       // Polyfill process IMMEDIATELY before any modules load
-      window.process = window.process || { env: { API_KEY: "AIzaSyCiAA2DhF7VlNKDBN5dWVl3ko4GqOoEYtw" } };
+      window.process = window.process || { env: {} };
       console.log("System: Process polyfill initialized.");
 
-      // Register Service Worker safely
+      // Register Service Worker safely (or unregister for now to clear cache)
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('./sw.js')
-            .then(reg => console.log('SW registered'))
-            .catch(err => console.log('SW failed', err));
+          navigator.serviceWorker.getRegistrations().then(function(registrations) {
+            for(let registration of registrations) {
+              registration.unregister();
+            }
+          });
         });
       }
     </script>
 
-    <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     
     <style>
@@ -70,22 +71,6 @@
       @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 
-    <script type="importmap">
-    {
-      "imports": {
-        "@google/genai": "https://esm.sh/@google/genai@0.1.2",
-        "react-dom/client": "https://esm.sh/react-dom@^19.2.3/client",
-        "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-        "react/": "https://esm.sh/react@^19.2.3/",
-        "react": "https://esm.sh/react@^19.2.3",
-        "firebase/app": "https://esm.sh/firebase@10.13.1/app",
-        "firebase/analytics": "https://esm.sh/firebase@10.13.1/analytics",
-        "firebase/auth": "https://esm.sh/firebase@10.13.1/auth",
-        "firebase/": "https://esm.sh/firebase@10.13.1/",
-        "qrcode": "https://esm.sh/qrcode@1.5.3"
-      }
-    }
-    </script>
   <link rel="stylesheet" href="/index.css">
 </head>
   <body>

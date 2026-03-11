@@ -4,13 +4,20 @@ import { MedicineData, PatientProfile, ChatMessage, DermaData, ScanHistoryItem, 
 
 // Robustly retrieve API Key
 const getApiKey = (): string => {
-  if (typeof process !== "undefined" && process.env?.API_KEY) {
-    return process.env.API_KEY;
+  try {
+    if (typeof process !== "undefined" && process.env && (process.env.GEMINI_API_KEY || process.env.API_KEY)) {
+      return process.env.GEMINI_API_KEY || process.env.API_KEY || "";
+    }
+    if (typeof window !== "undefined" && (window as any).process?.env?.API_KEY) {
+      return (window as any).process.env.API_KEY;
+    }
+    if (typeof window !== "undefined" && (window as any).process?.env?.GEMINI_API_KEY) {
+      return (window as any).process.env.GEMINI_API_KEY;
+    }
+    return "";
+  } catch (e) {
+    return "";
   }
-  if (typeof window !== "undefined" && (window as any).process?.env?.API_KEY) {
-    return (window as any).process.env.API_KEY;
-  }
-  return "";
 };
 
 const apiKey = getApiKey();
@@ -109,7 +116,7 @@ const DERMA_SCHEMA_STR = `
 // --- GENERIC FALLBACK HANDLER ---
 const generateContentWithFallback = async (params: any, isVision: boolean = false): Promise<string> => {
     // OFFLINE CHECK
-    if (!navigator.onLine) {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
         throw new Error("You are currently offline. Internet is required for AI analysis.");
     }
     
@@ -331,6 +338,8 @@ export const getDoctorAIResponse = async (history: ChatMessage[], scanHistory?: 
     return responseText;
   } catch (error: any) {
     console.error("Doctor AI Error:", error);
+    if (error.message?.includes("API Key is missing")) return error.message;
+    if (error.message?.includes("API key") || error.message?.includes("403")) return "Invalid API Key. Please update the key in the app settings.";
     if (error.message?.includes("offline")) return "I cannot check online resources right now. Please connect to the internet.";
     if (error.message?.includes("429")) return "I am busy right now. Please try again later (Quota Exceeded).";
     return "I cannot answer right now due to a connection issue.";
