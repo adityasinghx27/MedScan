@@ -49,6 +49,25 @@ const DoctorAI: React.FC<DoctorAIProps> = ({ isPremium, onOpenPremium, userId, m
 
   useEffect(() => {
     const today = new Date().toISOString().split('T')[0];
+    const saved = localStorage.getItem(getUsageKey());
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.date === today) {
+          setUsage(parsed.count);
+        } else {
+          setUsage(0);
+        }
+      } catch (e) {
+        setUsage(0);
+      }
+    } else {
+      setUsage(0);
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    const today = new Date().toISOString().split('T')[0];
     localStorage.setItem(getUsageKey(), JSON.stringify({ date: today, count: usage }));
   }, [usage, userId]);
 

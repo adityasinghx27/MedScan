@@ -1,5 +1,5 @@
 
-import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from "@google/generative-ai";
+import { GoogleGenAI } from "@google/genai";
 import { MedicineData, PatientProfile, ChatMessage, DermaData, ScanHistoryItem, DietPlan } from "../types.ts";
 
 // Robustly retrieve API Key
@@ -15,14 +15,14 @@ const getApiKey = (): string => {
 
 const apiKey = getApiKey();
 // Initialize GenAI only if key exists to prevent immediate crash
-const genAI = apiKey ? new GoogleGenerativeAI(apiKey) : null;
+const genAI = apiKey ? new GoogleGenAI({ apiKey }) : null;
 
 // SAFETY SETTINGS: Crucial for Medical Apps
 const SAFETY_SETTINGS = [
-  { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-  { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
-  { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
-  { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+  { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+  { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+  { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+  { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
 ];
 
 // Helper to clean JSON string (remove markdown fences if present)
@@ -117,39 +117,24 @@ const generateContentWithFallback = async (params: any, isVision: boolean = fals
         throw new Error("API Key is missing. Please restart the app.");
     }
 
-    // Models priority list - Adjusted for v0.21.0 compatibility
-    const models = ["gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-1.5-pro"]; 
+    // Models priority list
+    const models = ["gemini-3-flash-preview", "gemini-3.1-pro-preview"]; 
 
     let lastError = null;
 
     for (const modelName of models) {
         try {
             console.log(`MediIQ: Attempting ${modelName}...`);
-            const model = genAI.getGenerativeModel({ 
+            
+            const response = await genAI.models.generateContent({
                 model: modelName,
-                safetySettings: SAFETY_SETTINGS,
-                // Removed generationConfig.responseMimeType for broad compatibility on failures
+                contents: params.contents,
+                config: {
+                    safetySettings: SAFETY_SETTINGS as any,
+                }
             });
             
-            // Standardize contents
-            let finalContent: any = [];
-            
-            if (params.contents && Array.isArray(params.contents)) {
-                // Chat format
-                 // v0.21.0 expects array for chat, but here we are using generateContent for single turn sometimes
-                 // if contents is array of objects with parts
-                 finalContent = params.contents;
-            } else if (params.contents && params.contents.parts) {
-                // Vision format
-                finalContent = [params.contents];
-            } else {
-                // String prompt
-                finalContent = [params.contents];
-            }
-
-            const result = await model.generateContent(finalContent);
-            const response = await result.response;
-            const text = response.text();
+            const text = response.text;
             
             if (!text) throw new Error("Empty response from AI");
             return text;
@@ -168,6 +153,12 @@ const generateContentWithFallback = async (params: any, isVision: boolean = fals
 
 // --- EXPORTED FUNCTIONS ---
 
+// Helper to extract mime type
+const getMimeType = (dataUrl: string): string => {
+    const match = dataUrl.match(/^data:(.*);base64,/);
+    return match ? match[1] : "image/jpeg";
+};
+
 export const analyzeMedicineImage = async (base64Images: string[], profile: PatientProfile): Promise<MedicineData> => {
   try {
     console.log("MediIQ: Starting Medicine Analysis...");
@@ -175,10 +166,11 @@ export const analyzeMedicineImage = async (base64Images: string[], profile: Pati
     // Prepare image parts
     const imageParts = base64Images.map(img => {
       const cleanBase64 = img.includes(",") ? img.split(",")[1] : img;
+      const mimeType = getMimeType(img);
       return {
         inlineData: {
           data: cleanBase64,
-          mimeType: "image/jpeg"
+          mimeType: mimeType
         }
       };
     });
@@ -196,7 +188,6 @@ export const analyzeMedicineImage = async (base64Images: string[], profile: Pati
     If image is unreadable, set 'name' to 'Unreadable Image' and 'riskScore' to 'High'.
     `;
 
-    // Structure for v0.21.0
     const contentPayload = {
         parts: [
             ...imageParts,
@@ -222,10 +213,11 @@ export const analyzeMedicineImage = async (base64Images: string[], profile: Pati
 export const analyzeSkinCondition = async (base64Image: string): Promise<DermaData> => {
   try {
     const cleanBase64 = base64Image.includes(",") ? base64Image.split(",")[1] : base64Image;
+    const mimeType = getMimeType(base64Image);
     const imagePart = {
         inlineData: {
             data: cleanBase64,
-            mimeType: "image/jpeg"
+            mimeType: mimeType
         }
     };
 
